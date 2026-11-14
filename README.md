@@ -8,4 +8,116 @@ A Fabric 1.20.1 shop where players buy from and sell to the server. Payments go 
 
 Commands come first. A chest GUI is not included yet, but the hook is reserved. Optional client UI will live in MinecraftUIMod. Vanilla clients can still join.
 
+## 向谁买卖
+
+玩家向服务器购买，也可以把物品卖回服务器。这不是玩家之间在领地上开的铺子，也不是服务器出售土地。土地出让账户留给卖地，商店不用它。
+
+Players buy from the server and sell back to the server. This is not a player stall on claimed land, and it is not a land sale. The land-grant account stays with land sales.
+
+## 货款记在哪里
+
+货款走中央银行的账面，不另造一种货币。玩家的活期存款和商店经营账户都是储蓄总池里的分户：每人一条分户，总池是这些分户加在一起。购买时，钱从玩家的活期存款划进商店经营账户。出售时，钱从商店经营账户划回玩家。经营账户可以按活期存款获得利息，利息由中央银行从手续费留存里支付。
+
+这个账户不是发行准备金，也不是个人发行用的金库。银行券的发行、兑现和票据仍由中央银行办理，商店不重复做。
+
+服务器没装中央银行时，商店仍能加载。价格可以按钻石等值查看。真正买卖时，聊天里会说明现在不能入账。
+
+中央银行目前还没有开出商店经营账户。在它开出之前，买卖会被拒绝，不会把货款记到别的账上。给银行作者的说明在 `docs/bank-hooks.md`。
+
+Payments are book entries in the central bank. There is no new currency. Personal demand deposits and the shop operating account are sub-ledgers of the same savings pool. A purchase moves money from the player into the operating account. A sale moves it back. The operating account can earn demand-deposit interest, paid by the bank from retained fees.
+
+The account is not an issuance reserve and not a personal issuance vault. Bank-note issue, redemption, and paper stay in the bank mod.
+
+Without the bank, the shop still loads. Diamond-equivalent prices can be read. Buy and sell say in chat that nothing can be posted. The bank does not expose the operating account yet, so trades are refused until it does. The note for the bank is `docs/bank-hooks.md`.
+
+## 价格怎么走
+
+每种物品有一个起点，表示它相对于钻石有多难获得。钻石的起点是 1。这只是开张时的价格，不表示以后就该停在这里。
+
+成交时再按中央银行当时的汇率，把钻石等值换成银行券。汇率变了，要付的银行券会变，已经记下的钻石等值不会被汇率改写。
+
+每成交一个物品，价格按当前价格小幅移动。玩家购买，价格上升。玩家出售，价格下降。没有把价格拉回起点的力量。买卖多了，价格可以离起点很远，以便靠近游戏里真实的供求。
+
+一步的默认大小是 0.002，也就是当前价格的千分之二。一次购买多个时，价格沿着这一小步往上走，货款按走过的价格相加。不足一个银行券的零头向上进位。一整笔还不足一个银行券时，这次不成交，聊天里会写出至少要多少个。
+
+Prices start from gathering difficulty relative to one diamond. That anchor is only the opening price. At the moment of a trade it is converted with the bank's current rate. The stored diamond price is not rewritten when the rate moves.
+
+Each item in a trade takes one small step off the current price. Buying steps up. Selling steps down. Nothing pulls the price back to the anchor, so a long run of trades can travel far from the start. The default step is 0.002 of the current price. A payment is the sum along that path, then rounded up to a whole bank note. An order that is still below one note is refused, and chat tells you how many items would be enough.
+
+## 指令
+
+指令的写法是英文。聊天里的说明是中文。
+
+Command words are English. Chat replies are Chinese.
+
+```
+/shop
+/shop buy <item> <count>
+/shop sell <item> <count>
+/shop price <item>
+/shop list [page]
+/shop admin status
+/shop admin reload
+/shop admin step <fraction>
+/shop admin anchor <item> <diamonds>
+/shop admin reset <item>
+```
+
+- `/shop` 列出上面的写法。
+- `/shop buy <item> <count>` 向服务器购买。`<item>` 用物品标识，例如 `minecraft:diamond`。`<count>` 是数量。
+- `/shop sell <item> <count>` 把背包里的普通物品卖给服务器。带有附加数据的物品不会被收走。
+- `/shop price <item>` 查看现价、起点，以及按当前汇率换成银行券后的金额。
+- `/shop list [page]` 翻阅目录。页码从 1 开始。
+- `/shop admin status` 查看步长、汇率、储蓄总池和商店经营账户是否已经接上。需要管理员。
+- `/shop admin reload` 重新读取配置。已经成交的价格还在。
+- `/shop admin step <fraction>` 修改每成交一个物品的步长，例如 `0.002`。不能超过 `0.2`。
+- `/shop admin anchor <item> <diamonds>` 修改起点。已经成交过的价格不变。
+- `/shop admin reset <item>` 只清除这一种物品的成交价，让它回到当前起点。其它物品不动。
+
+新增目录物品时，把一行写进配置，再执行 `/shop admin reload`。不要靠删存档来改价格。
+
+`/shop` prints the commands. `buy` and `sell` trade with the server. `price` and `list` only look. Admin commands need operator permission. `step` and `anchor` change the configuration. `reset` clears one saved price. Reload keeps prices that have already traded.
+
+商店刚开张时，经营账户里没有钱，所以要先有人向服务器购买，之后服务器才付得起收购。余额不足时，聊天里会说明。
+
+The operating account starts empty. Someone has to buy from the server before the server can pay for a sale.
+
+## 没有中央银行的时候
+
+模组仍然加载。`/shop price` 和 `/shop list` 可以看钻石等值。`/shop buy` 和 `/shop sell` 会说明中央银行没有加载，或者经营账户还没有接入，并且不会改动物品和价格。
+
+The mod still loads. Price and list keep working in diamond equivalents. Buy and sell explain that the bank is missing or that the operating account is not connected, and they leave items and prices alone.
+
+## 箱子界面和独立客户端
+
+这次没有箱子界面。以后的箱子界面调用 `dev.jdguo.shop.ui.ShopChestUiHooks`，用它报价、购买和出售。计价和入账仍留在商店里，不必重写。
+
+可选的客户端以后放在 [MinecraftUIMod](https://github.com/heplus1s/MinecraftUIMod)。它如果要同步，使用服务器上的 `shopmod:hello`、`shopmod:action` 和 `shopmod:sync`。没有安装这个界面的原版客户端可以照常进服，服务器不会向它发送这个频道。
+
+There is no chest screen in this version. A later one should call `dev.jdguo.shop.ui.ShopChestUiHooks`. Optional client UI belongs in MinecraftUIMod and may use the `shopmod` hello, action, and sync payloads. Vanilla clients can join without that pack.
+
+## 配置和存档
+
+配置在 `config/shopmod.json`。第一次运行会写出一份默认目录。目录里的 `anchorDiamonds` 是起点，只对还没有成交价的物品生效。
+
+成交价写在世界存档里：`data/shopmod.dat`，旁边还有一份 `data/shopmod-prices.json`。升级时保留这些文件。读不出来时，服务器会停下来，而不是改用空价格。
+
+Settings live in `config/shopmod.json`. Traded prices live in the world folder, in `data/shopmod.dat` and `data/shopmod-prices.json`. Upgrades keep that data. A save that cannot be read stops the server instead of starting from empty prices.
+
+## 构建
+
+需要 Java 17。在仓库根目录执行：
+
+```
+./gradlew build
+```
+
+给服务器用的 jar 在 `build/libs/shopmod-1.0.0.jar`。把它和 Fabric Loader、Fabric API 一起放进服务器的 `mods`。原版客户端不用安装。单人游戏要在带 Fabric 的客户端里装同一份 jar，因为单人世界的服务器跑在那个客户端里。
+
+中央银行是可选的。装上以后，汇率和报价会接上；经营账户要等银行补上 `docs/bank-hooks.md` 里的类。
+
+Java 17 is required. `./gradlew build` writes `build/libs/shopmod-1.0.0.jar`. Put that jar, Fabric Loader, and Fabric API on the server. Vanilla clients do not install it. Singleplayer needs the same jar on a Fabric client, because that client runs the world. The bank is optional.
+
 许可证为 MIT，版权归 heplus1s。
+
+The license is MIT. Copyright heplus1s.

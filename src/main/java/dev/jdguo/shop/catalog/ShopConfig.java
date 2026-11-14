@@ -1,0 +1,186 @@
+package dev.jdguo.shop.catalog;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Server-wide shop settings. Live prices are not stored here; they live in the world save.
+ * Changing an anchor does not move a price that has already traded.
+ */
+public final class ShopConfig {
+    private final BigDecimal stepFraction;
+    private final BigDecimal minDiamondPrice;
+    private final int maxCount;
+    private final int pageSize;
+    private final List<CatalogEntry> catalog;
+    private final Map<String, CatalogEntry> byId;
+
+    public ShopConfig(BigDecimal stepFraction, BigDecimal minDiamondPrice, int maxCount, int pageSize,
+                      List<CatalogEntry> catalog) {
+        this.stepFraction = stepFraction;
+        this.minDiamondPrice = minDiamondPrice;
+        this.maxCount = maxCount;
+        this.pageSize = pageSize;
+        this.catalog = List.copyOf(catalog);
+        Map<String, CatalogEntry> index = new LinkedHashMap<>();
+        for (CatalogEntry entry : this.catalog) {
+            index.put(entry.itemId(), entry);
+        }
+        this.byId = Map.copyOf(index);
+    }
+
+    public static ShopConfig defaults() {
+        return new ShopConfig(new BigDecimal("0.002"), new BigDecimal("0.000000001"), 64, 8, defaultCatalog());
+    }
+
+    public void validate() {
+        if (stepFraction == null || stepFraction.signum() <= 0 || stepFraction.compareTo(new BigDecimal("0.2")) > 0) {
+            throw new IllegalArgumentException("stepFraction must be greater than 0 and at most 0.2");
+        }
+        if (minDiamondPrice == null || minDiamondPrice.signum() <= 0 || minDiamondPrice.compareTo(BigDecimal.ONE) > 0) {
+            throw new IllegalArgumentException("minDiamondPrice must be greater than 0 and at most 1");
+        }
+        if (maxCount < 1 || maxCount > 2304) {
+            throw new IllegalArgumentException("maxCount must be from 1 to 2304");
+        }
+        if (pageSize < 1 || pageSize > 50) {
+            throw new IllegalArgumentException("pageSize must be from 1 to 50");
+        }
+        Map<String, CatalogEntry> seen = new LinkedHashMap<>();
+        for (CatalogEntry entry : catalog) {
+            if (entry.itemId() == null || !entry.itemId().matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+                throw new IllegalArgumentException("Invalid item id: " + entry.itemId());
+            }
+            if (entry.name() == null || entry.name().isBlank() || entry.name().length() > 64
+                    || entry.name().chars().anyMatch(ch -> ch < 32)) {
+                throw new IllegalArgumentException("Invalid display name for " + entry.itemId());
+            }
+            if (entry.anchorDiamonds() == null || entry.anchorDiamonds().signum() <= 0
+                    || entry.anchorDiamonds().compareTo(new BigDecimal("1000000")) > 0) {
+                throw new IllegalArgumentException("Anchor out of range for " + entry.itemId());
+            }
+            if (seen.put(entry.itemId(), entry) != null) {
+                throw new IllegalArgumentException("Duplicate item id: " + entry.itemId());
+            }
+        }
+    }
+
+    public ShopConfig withStep(BigDecimal step) {
+        ShopConfig next = new ShopConfig(step, minDiamondPrice, maxCount, pageSize, catalog);
+        next.validate();
+        return next;
+    }
+
+    public ShopConfig withAnchor(String itemId, BigDecimal anchor) {
+        List<CatalogEntry> next = new ArrayList<>();
+        boolean found = false;
+        for (CatalogEntry entry : catalog) {
+            if (entry.itemId().equals(itemId)) {
+                next.add(new CatalogEntry(entry.itemId(), entry.name(), anchor));
+                found = true;
+            } else {
+                next.add(entry);
+            }
+        }
+        if (!found) {
+            throw new IllegalArgumentException("Unknown item: " + itemId);
+        }
+        ShopConfig config = new ShopConfig(stepFraction, minDiamondPrice, maxCount, pageSize, next);
+        config.validate();
+        return config;
+    }
+
+    public BigDecimal stepFraction() { return stepFraction; }
+    public BigDecimal minDiamondPrice() { return minDiamondPrice; }
+    public int maxCount() { return maxCount; }
+    public int pageSize() { return pageSize; }
+    public List<CatalogEntry> catalog() { return catalog; }
+
+    public CatalogEntry entry(String itemId) {
+        return itemId == null ? null : byId.get(itemId);
+    }
+
+    public int pages() {
+        if (catalog.isEmpty()) {
+            return 1;
+        }
+        return (catalog.size() + pageSize - 1) / pageSize;
+    }
+
+    /**
+     * Starting diamond-equivalents. These compare rough in-game gathering difficulty with one diamond.
+     * They are not a claim about the right long-run price. After the first trade, the world save wins.
+     */
+    private static List<CatalogEntry> defaultCatalog() {
+        List<CatalogEntry> list = new ArrayList<>();
+        list.add(item("minecraft:dirt", "泥土", "0.0004"));
+        list.add(item("minecraft:sand", "沙子", "0.0005"));
+        list.add(item("minecraft:gravel", "沙砾", "0.0006"));
+        list.add(item("minecraft:cobblestone", "圆石", "0.0008"));
+        list.add(item("minecraft:oak_log", "橡木原木", "0.002"));
+        list.add(item("minecraft:spruce_log", "云杉原木", "0.002"));
+        list.add(item("minecraft:birch_log", "白桦原木", "0.002"));
+        list.add(item("minecraft:jungle_log", "丛林原木", "0.002"));
+        list.add(item("minecraft:acacia_log", "金合欢原木", "0.002"));
+        list.add(item("minecraft:dark_oak_log", "深色橡木原木", "0.002"));
+        list.add(item("minecraft:wheat", "小麦", "0.003"));
+        list.add(item("minecraft:string", "线", "0.008"));
+        list.add(item("minecraft:bone", "骨头", "0.008"));
+        list.add(item("minecraft:amethyst_shard", "紫水晶碎片", "0.008"));
+        list.add(item("minecraft:coal", "煤炭", "0.01"));
+        list.add(item("minecraft:bread", "面包", "0.01"));
+        list.add(item("minecraft:copper_ingot", "铜锭", "0.012"));
+        list.add(item("minecraft:arrow", "箭", "0.012"));
+        list.add(item("minecraft:leather", "皮革", "0.015"));
+        list.add(item("minecraft:cooked_beef", "熟牛肉", "0.02"));
+        list.add(item("minecraft:cooked_porkchop", "熟猪排", "0.02"));
+        list.add(item("minecraft:redstone", "红石粉", "0.02"));
+        list.add(item("minecraft:quartz", "下界石英", "0.02"));
+        list.add(item("minecraft:lapis_lazuli", "青金石", "0.025"));
+        list.add(item("minecraft:prismarine_shard", "海晶碎片", "0.03"));
+        list.add(item("minecraft:gunpowder", "火药", "0.04"));
+        list.add(item("minecraft:prismarine_crystals", "海晶砂粒", "0.05"));
+        list.add(item("minecraft:iron_ingot", "铁锭", "0.06"));
+        list.add(item("minecraft:coal_block", "煤炭块", "0.09"));
+        list.add(item("minecraft:obsidian", "黑曜石", "0.1"));
+        list.add(item("minecraft:copper_block", "铜块", "0.108"));
+        list.add(item("minecraft:gold_ingot", "金锭", "0.15"));
+        list.add(item("minecraft:crying_obsidian", "哭泣的黑曜石", "0.18"));
+        list.add(item("minecraft:magma_cream", "岩浆膏", "0.2"));
+        list.add(item("minecraft:ender_pearl", "末影珍珠", "0.35"));
+        list.add(item("minecraft:sponge", "海绵", "0.35"));
+        list.add(item("minecraft:blaze_rod", "烈焰棒", "0.4"));
+        list.add(item("minecraft:nautilus_shell", "鹦鹉螺壳", "0.4"));
+        list.add(item("minecraft:experience_bottle", "附魔之瓶", "0.4"));
+        list.add(item("minecraft:iron_block", "铁块", "0.54"));
+        list.add(item("minecraft:ender_eye", "末影之眼", "0.55"));
+        list.add(item("minecraft:emerald", "绿宝石", "0.6"));
+        list.add(item("minecraft:diamond", "钻石", "1"));
+        list.add(item("minecraft:golden_apple", "金苹果", "1.2"));
+        list.add(item("minecraft:gold_block", "金块", "1.35"));
+        list.add(item("minecraft:ghast_tear", "恶魂之泪", "1.5"));
+        list.add(item("minecraft:dragon_breath", "龙息", "1.5"));
+        list.add(item("minecraft:echo_shard", "回响碎片", "1.5"));
+        list.add(item("minecraft:shulker_shell", "潜影壳", "2"));
+        list.add(item("minecraft:ancient_debris", "远古残骸", "3"));
+        list.add(item("minecraft:netherite_scrap", "下界合金碎片", "3"));
+        list.add(item("minecraft:heart_of_the_sea", "海洋之心", "4"));
+        list.add(item("minecraft:recovery_compass", "恢复指南针", "4"));
+        list.add(item("minecraft:netherite_upgrade_smithing_template", "下界合金升级锻造模板", "5"));
+        list.add(item("minecraft:emerald_block", "绿宝石块", "5.4"));
+        list.add(item("minecraft:totem_of_undying", "不死图腾", "6"));
+        list.add(item("minecraft:diamond_block", "钻石块", "9"));
+        list.add(item("minecraft:netherite_ingot", "下界合金锭", "16"));
+        list.add(item("minecraft:nether_star", "下界之星", "20"));
+        list.add(item("minecraft:elytra", "鞘翅", "24"));
+        list.add(item("minecraft:enchanted_golden_apple", "附魔金苹果", "36"));
+        return list;
+    }
+
+    private static CatalogEntry item(String id, String name, String anchor) {
+        return new CatalogEntry(id, name, new BigDecimal(anchor));
+    }
+}
