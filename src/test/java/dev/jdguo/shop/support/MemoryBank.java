@@ -1,22 +1,41 @@
 package dev.jdguo.shop.support;
 
+import dev.jdguo.shop.bank.PayChoice;
 import dev.jdguo.shop.bank.ShopBank;
+import dev.jdguo.shop.price.MoneyScale;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-/** In-memory savings pool used by shop tests. Not a second currency. */
+/** In-memory balances at four decimal places. Each currency is a separate book. */
 public final class MemoryBank implements ShopBank {
-    public BigInteger player = new BigInteger("100");
-    public BigInteger shop = BigInteger.ZERO;
-    public BigDecimal fx = BigDecimal.ONE;
+    public final Map<String, BigDecimal> player = new HashMap<>();
+    public final Map<String, BigDecimal> shop = new HashMap<>();
+    public final Map<String, BigDecimal> rates = new HashMap<>();
+    public final Map<String, PersonalNoteRef> notes = new HashMap<>();
     public boolean loaded = true;
     public boolean ready = true;
     public boolean hook = true;
-    public BigInteger savings = new BigInteger("100");
     public BigDecimal interest = new BigDecimal("0.02");
     public boolean hideShopBalance;
+
+    public MemoryBank() {
+        player.put("note", new BigDecimal("100"));
+        shop.put("note", BigDecimal.ZERO);
+        rates.put("note", BigDecimal.ONE);
+    }
+
+    public BigDecimal player(String key) {
+        return MoneyScale.quantize(player.getOrDefault(key, BigDecimal.ZERO));
+    }
+
+    public BigDecimal shop(String key) {
+        return MoneyScale.quantize(shop.getOrDefault(key, BigDecimal.ZERO));
+    }
 
     @Override public boolean modLoaded() { return loaded; }
     @Override public boolean ledgerReady() { return loaded && ready; }
@@ -24,26 +43,44 @@ public final class MemoryBank implements ShopBank {
     @Override public boolean operatingAccountReady() { return loaded && ready && hook; }
     @Override public String currencyId() { return "note"; }
     @Override public String currencyName() { return "银行券"; }
-    @Override public BigDecimal unitsPerDiamond() { return loaded && ready ? fx : null; }
-    @Override public BigInteger copperPerDiamond() { return new BigInteger("1000"); }
-    @Override public BigDecimal annualInterestFraction() { return interest; }
-    @Override public BigInteger savingsPool() { return savings; }
 
     @Override
-    public BigInteger playerBalance(UUID player) {
-        return operatingAccountReady() ? this.player : null;
-    }
-
-    @Override
-    public BigInteger operatingBalance() {
-        if (!operatingAccountReady() || hideShopBalance) {
+    public BigDecimal unitsPerDiamond(PayChoice choice) {
+        if (!loaded || !ready || choice == null || choice.hard()) {
             return null;
         }
-        return shop;
+        return rates.get(choice.key());
+    }
+
+    @Override public BigInteger copperPerDiamond() { return new BigInteger("1000"); }
+    @Override public BigDecimal annualInterestFraction() { return interest; }
+
+    @Override
+    public BigInteger savingsPool() {
+        return player("note").add(shop("note")).setScale(0, MoneyScale.ROUND).toBigInteger();
     }
 
     @Override
-    public PostResult post(UUID player, BigInteger amount, boolean playerPaysShop) {
+    public BigDecimal playerBalance(UUID playerId, PayChoice choice) {
+        if (!operatingAccountReady() || choice == null) {
+            return null;
+        }
+        return player(choice.key());
+    }
+
+    @Override
+    public BigDecimal operatingBalance(PayChoice choice) {
+        if (!operatingAccountReady() || hideShopBalance || choice == null) {
+            return null;
+        }
+        return shop(choice.key());
+    }
+
+    @Override
+    public PostResult post(UUID playerId, PayChoice choice, BigDecimal amount, boolean playerPaysShop) {
+        if (choice == null || choice.hard()) {
+            return PostResult.fail("hard_currency");
+        }
         if (!loaded) {
             return PostResult.fail("bank_absent");
         }
@@ -53,23 +90,39 @@ public final class MemoryBank implements ShopBank {
         if (!hook) {
             return PostResult.fail("bank_hook_missing");
         }
-        if (amount == null || amount.signum() <= 0) {
+        BigDecimal due = MoneyScale.quantize(amount);
+        if (!MoneyScale.positive(due)) {
             return PostResult.fail("bank_rejected");
         }
+        String key = choice.key();
+        BigDecimal payer = player(key);
+        BigDecimal till = shop(key);
         if (playerPaysShop) {
-            if (this.player.compareTo(amount) < 0) {
-                return PostResult.fail("insufficient_funds", this.player, shop);
+            if (payer.compareTo(due) < 0) {
+                return PostResult.fail("insufficient_funds", payer, till);
             }
-            this.player = this.player.subtract(amount);
-            shop = shop.add(amount);
+            player.put(key, MoneyScale.quantize(payer.subtract(due)));
+            shop.put(key, MoneyScale.quantize(till.add(due)));
         } else {
-            if (shop.compareTo(amount) < 0) {
-                return PostResult.fail("insufficient_shop", this.player, shop);
+            if (till.compareTo(due) < 0) {
+                return PostResult.fail("insufficient_shop", payer, till);
             }
-            shop = shop.subtract(amount);
-            this.player = this.player.add(amount);
+            shop.put(key, MoneyScale.quantize(till.subtract(due)));
+            player.put(key, MoneyScale.quantize(payer.add(due)));
         }
-        savings = this.player.add(shop);
-        return PostResult.ok(this.player, shop);
+        return PostResult.ok(player(key), shop(key));
+    }
+
+    @Override
+    public PersonalNoteRef findPersonal(String name) {
+        if (name == null) {
+            return null;
+        }
+        return notes.values().stream().filter(note -> note.name().equals(name)).findFirst().orElse(null);
+    }
+
+    @Override
+    public List<String> personalNames() {
+        return notes.values().stream().map(PersonalNoteRef::name).toList();
     }
 }

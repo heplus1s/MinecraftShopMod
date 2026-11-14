@@ -26,8 +26,8 @@ class ShopSavedTest {
         ShopSaved saved = ShopSaved.parse(raw);
         saved.setPrice("minecraft:diamond", new BigDecimal("1.75"));
         ShopSaved again = ShopSaved.parse(saved.toJson());
-        assertEquals(new BigDecimal("1.75"), again.read("minecraft:diamond").value());
-        assertEquals(new BigDecimal("0.25"), again.read("minecraft:dirt").value());
+        assertEquals(0, again.read("minecraft:diamond").value().compareTo(new BigDecimal("1.75")));
+        assertEquals(0, again.read("minecraft:dirt").value().compareTo(new BigDecimal("0.25")));
         assertTrue(again.toJson().contains("keep this"));
         assertTrue(again.toJson().contains("later"));
     }
@@ -53,8 +53,8 @@ class ShopSavedTest {
         saved.setPrice("minecraft:diamond", new BigDecimal("4"));
         PriceBook book = new PriceBook(saved);
         ShopConfig config = ShopConfig.defaults().withAnchor("minecraft:diamond", new BigDecimal("2"));
-        assertEquals(new BigDecimal("4"), book.lookup(config, "minecraft:diamond").diamondEach());
+        assertEquals(0, book.lookup(config, "minecraft:diamond").diamondEach().compareTo(new BigDecimal("4")));
         book.reset("minecraft:diamond");
-        assertEquals(new BigDecimal("2"), book.lookup(config, "minecraft:diamond").diamondEach());
+        assertEquals(0, book.lookup(config, "minecraft:diamond").diamondEach().compareTo(new BigDecimal("2")));
     }
 }

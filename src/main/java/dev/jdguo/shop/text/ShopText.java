@@ -2,12 +2,11 @@ package dev.jdguo.shop.text;
 
 import dev.jdguo.shop.bank.ShopBank;
 import dev.jdguo.shop.catalog.ShopConfig;
-import dev.jdguo.shop.price.PlainNumbers;
+import dev.jdguo.shop.price.MoneyScale;
 import dev.jdguo.shop.ui.ShopListingView;
 import dev.jdguo.shop.ui.ShopQuoteView;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.util.List;
 
 /** Player-facing Chinese. Command words stay in the command tree, not in these sentences. */
@@ -20,12 +19,15 @@ public final class ShopText {
                 /shop sell <item> <count>
                 /shop price <item>
                 /shop list [page]
+                /shop currency
+                /shop currency note
+                /shop currency personal <name>
                 /shop admin status
                 /shop admin reload
                 /shop admin step <fraction>
                 /shop admin anchor <item> <diamonds>
                 /shop admin reset <item>
-                向服务器购买、向服务器出售、查询价格，或翻阅目录。调整配置需要管理员。""";
+                向服务器购买、向服务器出售、查询价格，或翻阅目录。结算货币用 currency 选择。调整配置需要管理员。""";
     }
 
     public static String adminHelp() {
@@ -42,8 +44,32 @@ public final class ShopText {
         return "该指令需要由玩家执行。";
     }
 
-    public static String notListed() {
-        return "商店目录里没有这种物品。";
+    public static String noQuote() {
+        return "暂无牌价。";
+    }
+
+    public static String hardCurrency() {
+        return "铜锭和钻石不能作为商店货款。请选择银行券，或选择一种个人银行券。一笔订单只用一种货币。";
+    }
+
+    public static String personalMissing() {
+        return "没有找到这个名字的个人银行券。";
+    }
+
+    public static String personalUnpriced() {
+        return "这张个人银行券暂无牌价，不能选作结算货币。";
+    }
+
+    public static String currencyNow(String name) {
+        return "当前结算货币为" + name + "。货款按四位小数记账。铜锭和钻石不参与结算。";
+    }
+
+    public static String currencySet(String name) {
+        return "结算货币已改为" + name + "。之后的购买和出售只使用这一种货币。";
+    }
+
+    public static String zeroCharge() {
+        return "这笔货款按四位小数计算后为零，不能入账。没有改记成整数，也没有改用第二种货币。";
     }
 
     public static String badCount(int max) {
@@ -64,7 +90,7 @@ public final class ShopText {
     }
 
     public static String badItem() {
-        return "游戏里没有这个物品标识。";
+        return "暂无牌价。";
     }
 
     public static String badPrice(String itemId) {
@@ -89,24 +115,14 @@ public final class ShopText {
         return "中央银行暂时不能提供银行券对钻石的汇率，这笔交易无法换算。";
     }
 
-    public static String belowUnit(String currency, int minimum) {
-        return "按当前汇率，这批物品不足一个" + currency + "。请一次交易至少 " + minimum
-                + " 个，使金额达到一个" + currency + "。";
+    public static String insufficientFunds(String currency, BigDecimal need, BigDecimal have) {
+        return "所选货币余额不足。需要" + currency + " " + MoneyScale.display(need)
+                + "，当前余额 " + MoneyScale.display(have) + "。这一笔没有成交，也没有少买一部分。";
     }
 
-    public static String belowUnitCap(String currency, int max) {
-        return "按当前汇率，即使一次交易 " + max + " 个，金额仍不足一个" + currency
-                + "。请等汇率变化，或由管理员提高单次数量上限。";
-    }
-
-    public static String insufficientFunds(String currency, BigInteger need, BigInteger have) {
-        return "活期存款余额不足。需要" + currency + " " + PlainNumbers.whole(need)
-                + "，当前余额 " + PlainNumbers.whole(have) + "。";
-    }
-
-    public static String insufficientShop(String currency, BigInteger need, BigInteger have) {
-        return "商店经营账户余额不足，暂时不能收购。需要" + currency + " " + PlainNumbers.whole(need)
-                + "，账户余额 " + PlainNumbers.whole(have) + "。";
+    public static String insufficientShop(String currency, BigDecimal need, BigDecimal have) {
+        return "商店在这种货币上的余额不足。需要" + currency + " " + MoneyScale.display(need)
+                + "，当前余额 " + MoneyScale.display(have) + "。这一笔没有成交，也没有少收一部分。";
     }
 
     public static String bankRejected() {
@@ -121,24 +137,24 @@ public final class ShopText {
         return "货款已经划出，但物品没有放入背包，退回也没有成功。请管理员核对商店经营账户和玩家的活期存款。";
     }
 
-    public static String bought(String name, int count, String currency, BigInteger notes,
-                                 BigDecimal after, BigDecimal anchor, BigInteger balance) {
+    public static String bought(String name, int count, String currency, BigDecimal notes,
+                                 BigDecimal after, BigDecimal anchor, BigDecimal balance) {
         String text = "已向服务器购入" + name + " " + count + " 个，支付" + currency + " "
-                + PlainNumbers.whole(notes) + "。成交后单价为 " + PlainNumbers.amount(after)
-                + " 钻石等值，起点为 " + PlainNumbers.amount(anchor) + "。";
+                + MoneyScale.display(notes) + "。成交后单价为 " + MoneyScale.display(after)
+                + " 钻石等值，起点为 " + MoneyScale.display(anchor) + "。";
         if (balance != null) {
-            text += "活期存款余额为" + currency + " " + PlainNumbers.whole(balance) + "。";
+            text += "该货币余额为" + currency + " " + MoneyScale.display(balance) + "。";
         }
         return text;
     }
 
-    public static String sold(String name, int count, String currency, BigInteger notes,
-                               BigDecimal after, BigDecimal anchor, BigInteger balance) {
+    public static String sold(String name, int count, String currency, BigDecimal notes,
+                               BigDecimal after, BigDecimal anchor, BigDecimal balance) {
         String text = "已向服务器出售" + name + " " + count + " 个，收入" + currency + " "
-                + PlainNumbers.whole(notes) + "。成交后单价为 " + PlainNumbers.amount(after)
-                + " 钻石等值，起点为 " + PlainNumbers.amount(anchor) + "。";
+                + MoneyScale.display(notes) + "。成交后单价为 " + MoneyScale.display(after)
+                + " 钻石等值，起点为 " + MoneyScale.display(anchor) + "。";
         if (balance != null) {
-            text += "活期存款余额为" + currency + " " + PlainNumbers.whole(balance) + "。";
+            text += "该货币余额为" + currency + " " + MoneyScale.display(balance) + "。";
         }
         return text;
     }
@@ -148,32 +164,17 @@ public final class ShopText {
             return view.message();
         }
         StringBuilder text = new StringBuilder();
-        text.append(view.itemName()).append("（").append(view.itemId()).append("）：现价 ")
-                .append(PlainNumbers.amount(view.diamondEach())).append(" 钻石等值，起点 ")
-                .append(PlainNumbers.amount(view.anchor())).append("。");
-        if (view.notesExact() == null) {
-            text.append("中央银行没有给出可用汇率，暂时不能换算成").append(currency).append("。");
+        text.append(view.itemName()).append("（").append(view.itemId()).append("）：");
+        if (view.diamondEach() == null || view.diamondEach().signum() <= 0) {
+            text.append("暂无牌价。");
         } else {
-            text.append("按当前汇率，这一次合计约合").append(currency).append(" ")
-                    .append(PlainNumbers.amount(view.notesExact())).append("。");
-            boolean preview = view.code() != null && !"ready".equals(view.code()) && !"ok".equals(view.code());
-            if (view.notesDue() == null) {
-                if (view.minimumCount() > 0) {
-                    text.append("不足一个").append(currency).append("。一次")
-                            .append(view.buying() ? "购入" : "出售")
-                            .append("至少 ").append(view.minimumCount()).append(" 个才能结算。");
-                } else {
-                    text.append("不足一个").append(currency).append("，当前单次数量上限内无法结算。");
-                }
+            text.append("现价 ").append(MoneyScale.display(view.diamondEach())).append(" 钻石等值，起点 ")
+                    .append(MoneyScale.display(view.anchor())).append("。");
+            if (view.charge() == null) {
+                text.append("所选货币暂时不能换算，没有改用第二种货币。");
             } else {
-                text.append(preview ? "若可以入账，" : "");
-                text.append(view.buying() ? "购入" : "出售").append("将")
-                        .append(view.buying() ? "支付" : "收入").append(currency).append(" ")
-                        .append(PlainNumbers.whole(view.notesDue()));
-                if (new BigDecimal(view.notesDue()).compareTo(view.notesExact()) != 0) {
-                    text.append("。不足一个").append(currency).append("的部分向上进位");
-                }
-                text.append("。");
+                text.append("按当前汇率，这一次合计").append(currency).append(" ")
+                        .append(MoneyScale.display(view.charge())).append("。");
             }
         }
         text.append(settlementFoot(view.code()));
@@ -188,13 +189,13 @@ public final class ShopText {
         text.append("商店目录，第 ").append(page).append(" 页，共 ").append(pages).append(" 页。");
         for (ShopListingView row : rows) {
             text.append("\n").append(row.itemName()).append("  ").append(row.itemId());
-            if (row.diamondEach() == null) {
-                text.append("  已保存价格无法读取");
+            if (row.diamondEach() == null || row.diamondEach().signum() <= 0) {
+                text.append("  暂无牌价");
             } else {
-                text.append("  现价 ").append(PlainNumbers.amount(row.diamondEach())).append(" 钻石等值");
-            }
-            if (row.notesEach() != null) {
-                text.append("  约合").append(currency).append(" ").append(PlainNumbers.amount(row.notesEach()));
+                text.append("  现价 ").append(MoneyScale.display(row.diamondEach())).append(" 钻石等值");
+                if (row.notesEach() != null) {
+                    text.append("  约合").append(currency).append(" ").append(MoneyScale.display(row.notesEach()));
+                }
             }
         }
         text.append("\n").append(settlementFoot(settlementCode));
@@ -214,12 +215,12 @@ public final class ShopText {
     }
 
     public static String stepSet(BigDecimal step) {
-        return "价格步长已改为 " + PlainNumbers.amount(step)
+        return "价格步长已改为 " + MoneyScale.display(step)
                 + "。每成交一个物品，价格按当前价格移动这一小步。购买向上，出售向下，不会被拉回起点。已写入配置。";
     }
 
     public static String anchorSet(String name, BigDecimal anchor, String itemId) {
-        return "已把" + name + "的起点改为 " + PlainNumbers.amount(anchor)
+        return "已把" + name + "的起点改为 " + MoneyScale.display(anchor)
                 + " 钻石等值。已经成交过的价格没有改。若要让现价回到新起点，请再执行 /shop admin reset " + itemId + "。";
     }
 
@@ -232,7 +233,7 @@ public final class ShopText {
     }
 
     public static String resetDone(String name, BigDecimal anchor) {
-        return "已清除" + name + "的成交价。下一次交易按起点 " + PlainNumbers.amount(anchor)
+        return "已清除" + name + "的成交价。下一次交易按起点 " + MoneyScale.display(anchor)
                 + " 钻石等值计算。其它物品没有改动。";
     }
 
@@ -241,10 +242,11 @@ public final class ShopText {
         StringBuilder text = new StringBuilder();
         text.append("目录物品 ").append(config.catalog().size()).append(" 种，已保存成交价 ")
                 .append(storedPrices).append(" 条。");
-        text.append("\n价格步长 ").append(PlainNumbers.amount(config.stepFraction()))
+        text.append("\n价格步长 ").append(MoneyScale.display(config.stepFraction()))
                 .append("，单次数量上限 ").append(config.maxCount()).append("。");
-        text.append("\n价格下限 ").append(PlainNumbers.amount(config.minDiamondPrice()))
+        text.append("\n价格下限 ").append(MoneyScale.display(config.minDiamondPrice()))
                 .append(" 钻石等值，只用于防止价格变成零，不是起点。");
+        text.append("\n买卖按四位小数记账。玩家选择银行券或一种个人银行券，一笔订单只用这一种。铜锭和钻石不能付货款。余额不够则整笔拒绝。");
         text.append("\n配置文件 config/shopmod.json。成交价写在世界存档的 data 目录，升级时保留。");
         if (!bank.modLoaded()) {
             text.append("\n中央银行没有加载，买卖不能入账。钻石等值价格仍可查询。");
@@ -252,26 +254,27 @@ public final class ShopText {
             text.append("\n中央银行已加载，账本还没有准备好。");
         } else {
             text.append("\n中央银行已加载，结算货币为").append(currency).append("。");
-            if (bank.unitsPerDiamond() == null) {
+            var note = dev.jdguo.shop.bank.PayChoice.note(currency);
+            if (bank.unitsPerDiamond(note) == null) {
                 text.append("\n银行券对钻石的汇率暂时无法报价。");
             } else {
                 text.append("\n每个钻石合").append(currency).append(" ")
-                        .append(PlainNumbers.amount(bank.unitsPerDiamond())).append("。");
+                        .append(MoneyScale.display(bank.unitsPerDiamond(note))).append("。");
             }
             if (bank.copperPerDiamond() != null) {
-                text.append("每个钻石合铜锭 ").append(PlainNumbers.whole(bank.copperPerDiamond())).append("。");
+                text.append("每个钻石合铜锭 ").append(bank.copperPerDiamond().toString()).append("。铜锭只作汇率参照，不付货款。");
             }
             if (bank.annualInterestFraction() != null) {
-                text.append("\n活期存款年利率 ").append(PlainNumbers.amount(bank.annualInterestFraction()))
+                text.append("\n活期存款年利率 ").append(MoneyScale.display(bank.annualInterestFraction()))
                         .append("，按 365 个游戏日计算。利息由中央银行从手续费留存里支付，商店不另行造币。");
             }
             if (bank.savingsPool() != null) {
                 text.append("\n储蓄总池（").append(currency).append("）当前为 ")
-                        .append(PlainNumbers.whole(bank.savingsPool())).append("。");
+                        .append(MoneyScale.display(new BigDecimal(bank.savingsPool()))).append("。");
             }
             if (bank.operatingAccountReady()) {
-                text.append("\n商店经营账户余额为").append(currency).append(" ")
-                        .append(PlainNumbers.whole(bank.operatingBalance()))
+                text.append("\n商店经营账户（").append(currency).append("）余额为 ")
+                        .append(MoneyScale.display(bank.operatingBalance(note)))
                         .append("。该余额属于储蓄总池。");
             } else if (bank.operatingHookInstalled()) {
                 text.append("\n商店经营账户的接口已经存在，但账户还没有准备好。");
@@ -286,13 +289,14 @@ public final class ShopText {
 
     public static String settlementFoot(String code) {
         if (code == null || "ok".equals(code) || "ready".equals(code)) {
-            return "结算走活期存款，记入储蓄总池中的商店经营账户。";
+            return "结算只使用当前选定的一种货币，按四位小数记账。";
         }
         return switch (code) {
             case "bank_absent" -> "当前不能买卖，因为中央银行没有加载。";
             case "bank_not_ready", "world_not_ready" -> "当前不能买卖，因为账本还没有准备好。";
-            case "bank_hook_missing" -> "当前不能买卖，因为商店经营账户还没有接入储蓄总池。";
-            case "fx_unavailable" -> "当前不能换算成银行券。";
+            case "bank_hook_missing" -> "当前不能买卖，因为商店经营账户还没有接入。";
+            case "fx_unavailable" -> "当前不能换算成所选货币。";
+            case "hard_currency" -> "铜锭和钻石不能作为商店货款。";
             default -> "";
         };
     }
@@ -311,7 +315,8 @@ public final class ShopText {
         if (!bank.ledgerReady()) {
             return "bank_not_ready";
         }
-        if (bank.unitsPerDiamond() == null || bank.unitsPerDiamond().signum() <= 0) {
+        var note = dev.jdguo.shop.bank.PayChoice.note(currency(bank));
+        if (bank.unitsPerDiamond(note) == null || bank.unitsPerDiamond(note).signum() <= 0) {
             return "fx_unavailable";
         }
         if (!bank.operatingAccountReady()) {

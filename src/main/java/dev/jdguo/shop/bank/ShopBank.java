@@ -2,12 +2,12 @@ package dev.jdguo.shop.bank;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * What the shop needs from the central bank on the server thread.
- * Exchange-rate reads can succeed before the operating account exists.
- * {@link #post} never succeeds unless that account is actually there.
+ * Amounts posted and compared here are four-decimal figures in one selected currency.
  */
 public interface ShopBank {
     boolean modLoaded();
@@ -23,25 +23,40 @@ public interface ShopBank {
 
     String currencyName();
 
-    /** Settlement-currency units for one diamond. Null when the rate cannot be quoted. */
-    BigDecimal unitsPerDiamond();
+    /**
+     * Units of {@code choice} for one diamond. Null when that currency cannot be quoted.
+     * Hard currencies are not quoted.
+     */
+    BigDecimal unitsPerDiamond(PayChoice choice);
 
     BigInteger copperPerDiamond();
 
     /** Annual demand-deposit rate. Informational; the shop does not pay interest itself. */
     BigDecimal annualInterestFraction();
 
-    /** Aggregate savings pool for the settlement currency, when the bank can report it. */
+    /** Aggregate savings pool for the central note, when the bank can report it. */
     BigInteger savingsPool();
 
-    BigInteger playerBalance(UUID player);
+    /** Balance of {@code choice} at four decimal places. Null when it cannot be read. */
+    BigDecimal playerBalance(UUID player, PayChoice choice);
 
-    BigInteger operatingBalance();
+    BigDecimal operatingBalance(PayChoice choice);
 
-    PostResult post(UUID player, BigInteger amount, boolean playerPaysShop);
+    /**
+     * Moves {@code amount} of one currency. {@code amount} is already at four decimal places.
+     * The whole amount posts, or nothing does.
+     */
+    PostResult post(UUID player, PayChoice choice, BigDecimal amount, boolean playerPaysShop);
 
-    record PostResult(boolean success, String code, BigInteger playerBalance, BigInteger operatingBalance) {
-        public static PostResult ok(BigInteger playerBalance, BigInteger operatingBalance) {
+    /** Null when no personal note has that name. */
+    PersonalNoteRef findPersonal(String name);
+
+    List<String> personalNames();
+
+    record PersonalNoteRef(UUID id, String name, boolean priced) {}
+
+    record PostResult(boolean success, String code, BigDecimal playerBalance, BigDecimal operatingBalance) {
+        public static PostResult ok(BigDecimal playerBalance, BigDecimal operatingBalance) {
             return new PostResult(true, "ok", playerBalance, operatingBalance);
         }
 
@@ -49,7 +64,7 @@ public interface ShopBank {
             return new PostResult(false, code, null, null);
         }
 
-        public static PostResult fail(String code, BigInteger playerBalance, BigInteger operatingBalance) {
+        public static PostResult fail(String code, BigDecimal playerBalance, BigDecimal operatingBalance) {
             return new PostResult(false, code, playerBalance, operatingBalance);
         }
     }

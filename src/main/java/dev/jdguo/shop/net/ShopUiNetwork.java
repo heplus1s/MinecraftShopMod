@@ -75,7 +75,7 @@ public final class ShopUiNetwork {
         switch (action) {
             case "list" -> sync(player, shownPage, "");
             case "quote" -> {
-                ShopQuoteView view = ShopChestUiHooks.quote(itemId, Math.max(count, 1), true);
+                ShopQuoteView view = ShopChestUiHooks.quote(player, itemId, Math.max(count, 1), true);
                 sync(player, shownPage, view.message());
             }
             case "buy" -> {
@@ -95,7 +95,7 @@ public final class ShopUiNetwork {
             return;
         }
         PacketByteBuf buf = PacketByteBufs.create();
-        String json = ShopUiSnapshot.json(page, message);
+        String json = ShopUiSnapshot.json(player, page, message);
         if (json.length() > 32000) {
             json = "{\"protocol\":1,\"message\":\"[商店] 目录太长，请用指令查询。\",\"listings\":[]}";
         }

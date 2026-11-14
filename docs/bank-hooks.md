@@ -11,11 +11,15 @@
 
 中央银行请增加类 `dev.jdguo.bank.market.ShopOperatingAccount`。商店用反射调用它，所以银行不必依赖商店。
 
+金额一律是小数点后四位，四舍五入。不要收成整数，也不要把不足一单位的订单拒绝掉。余额不够时整笔失败，不要部分成交。一次只过户一种货币。
+
+`currencyKey` 为 `note` 时，是银行券，记在储蓄总池的商店经营账户。为 `personal:<uuid>` 时，是那一种个人银行券的持有额。铜锭和钻石不是合法的 key。
+
 ```java
 package dev.jdguo.bank.market;
 
 import dev.jdguo.bank.ledger.TxResult;
-import java.math.BigInteger;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public final class ShopOperatingAccount {
@@ -25,19 +29,20 @@ public final class ShopOperatingAccount {
     /** 中央虚拟货币，通常是 note。 */
     public String currencyId() { ... }
 
-    /** 商店经营账户余额。 */
-    public BigInteger balance() { ... }
+    /** 商店在这一种货币上的余额，四位小数。 */
+    public BigDecimal balance(String currencyKey) { ... }
 
-    /** 玩家在同一种货币上的活期存款。 */
-    public BigInteger playerBalance(UUID player) { ... }
+    /** 玩家在同一种货币上的余额，四位小数。 */
+    public BigDecimal playerBalance(UUID player, String currencyKey) { ... }
 
     /**
-     * playerPaysShop 为 true：玩家购买，借记玩家活期存款，贷记商店经营账户。
+     * playerPaysShop 为 true：玩家购买，借记玩家，贷记商店。
      * 为 false：玩家出售，方向相反。
-     * 成功时 TxResult.success() 为 true。失败时不要改任何余额。
+     * amount 已经是四位小数。成功时 TxResult.success() 为 true。
+     * 失败时不要改任何余额，也不要少划一部分。
      * 失败代码可用 insufficient_funds、insufficient_shop、bad_amount。
      */
-    public TxResult transfer(UUID player, BigInteger amount, boolean playerPaysShop) { ... }
+    public TxResult transfer(UUID player, String currencyKey, BigDecimal amount, boolean playerPaysShop) { ... }
 }
 ```
 
@@ -58,7 +63,7 @@ The shop already uses two public bank hooks:
 - `ShopQuote.install` reports the live diamond-equivalent for an item id such as `minecraft:diamond`. `IssuerLevy` does not read that quote yet. The shop does not change the bank to make it do so.
 - `BankBooks.unitsPer`, `copperPerDiamond`, `balance`, `savingsPool`, and `interestFraction` are read-only.
 
-Purchases and sales wait for one missing account. Please add `dev.jdguo.bank.market.ShopOperatingAccount` with `get`, `currencyId`, `balance`, `playerBalance`, and `transfer(UUID, BigInteger, boolean)`. The shop looks that class up by reflection. The bank does not need a dependency on the shop. The same contract is described by `dev.jdguo.shop.bank.ShopOperatingLedger`.
+Purchases and sales wait for one missing account. Please add `dev.jdguo.bank.market.ShopOperatingAccount` with `get`, `currencyId`, `balance(String)`, `playerBalance(UUID, String)`, and `transfer(UUID, String, BigDecimal, boolean)`. Amounts are four decimal places. The currency key is `note` or `personal:<uuid>`. Do not round up to a whole unit, do not refuse a total below one unit, and do not fill only part of an order. Copper and diamond are not keys. The shop looks that class up by reflection. The bank does not need a dependency on the shop. The same contract is described by `dev.jdguo.shop.bank.ShopOperatingLedger`.
 
 The account is a sub-ledger of the savings pool, beside personal demand deposits. A transfer stays inside that pool. It must not touch issuance reserves, personal issuance vaults, paper money, or the land-grant account. The pool total includes the operating balance. The operating balance earns demand-deposit interest from the retained-fee slice on the same daily pass as personal savings. The shop does not pay that interest itself.
 

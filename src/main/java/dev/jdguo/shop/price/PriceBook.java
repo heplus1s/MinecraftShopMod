@@ -1,9 +1,12 @@
 package dev.jdguo.shop.price;
 
+import dev.jdguo.shop.bank.PayChoice;
 import dev.jdguo.shop.catalog.CatalogEntry;
 import dev.jdguo.shop.catalog.ShopConfig;
+import dev.jdguo.shop.price.MoneyScale;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Live diamond-equivalent prices. A saved price always beats the config anchor.
@@ -28,14 +31,25 @@ public final class PriceBook {
     public Lookup lookup(ShopConfig config, String itemId) {
         CatalogEntry entry = config.entry(itemId);
         ShopSaved.Read read = saved.read(itemId);
-        if (read.corrupt()) {
+        if (read.corrupt() || (read.present() && !MoneyScale.positive(read.value()))) {
             return new Lookup(entry, null, true);
         }
-        if (read.present() && read.value() != null && read.value().signum() > 0) {
-            return new Lookup(entry, read.value(), false);
+        if (read.present()) {
+            return new Lookup(entry, MoneyScale.quantize(read.value()), false);
         }
-        BigDecimal anchor = entry == null ? null : entry.anchorDiamonds();
-        return new Lookup(entry, anchor, false);
+        if (entry == null || !MoneyScale.positive(entry.anchorDiamonds())) {
+            return new Lookup(entry, null, false);
+        }
+        return new Lookup(entry, MoneyScale.quantize(entry.anchorDiamonds()), false);
+    }
+
+    public PayChoice payer(UUID player) {
+        PayChoice choice = saved.payer(player);
+        return choice == null || choice.hard() ? PayChoice.note() : choice;
+    }
+
+    public void rememberPayer(UUID player, PayChoice choice) {
+        saved.setPayer(player, choice);
     }
 
     public void commit(String itemId, BigDecimal price) {

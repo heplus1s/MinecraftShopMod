@@ -6,7 +6,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import dev.jdguo.shop.bank.PayChoice;
+
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * World price document. Version 1 stores each live diamond-equivalent under {@code prices}.
@@ -93,8 +96,61 @@ public final class ShopSaved {
         prices().remove(itemId);
     }
 
+    public PayChoice payer(UUID player) {
+        if (player == null) {
+            return PayChoice.note();
+        }
+        JsonObject payers = payers();
+        JsonElement element = payers.get(player.toString());
+        if (element == null || !element.isJsonObject()) {
+            return PayChoice.note();
+        }
+        JsonObject row = element.getAsJsonObject();
+        String kind = row.has("kind") && row.get("kind").isJsonPrimitive() ? row.get("kind").getAsString() : "note";
+        if (!"personal".equals(kind) || !row.has("id")) {
+            return PayChoice.note();
+        }
+        try {
+            UUID id = UUID.fromString(row.get("id").getAsString());
+            String name = row.has("name") && row.get("name").isJsonPrimitive() ? row.get("name").getAsString() : id.toString();
+            return PayChoice.personal(id, name);
+        } catch (IllegalArgumentException error) {
+            return PayChoice.note();
+        }
+    }
+
+    public void setPayer(UUID player, PayChoice choice) {
+        if (player == null || choice == null || choice.hard()) {
+            return;
+        }
+        JsonObject payers = payers();
+        JsonObject row;
+        JsonElement existing = payers.get(player.toString());
+        if (existing != null && existing.isJsonObject()) {
+            row = existing.getAsJsonObject();
+        } else {
+            row = new JsonObject();
+        }
+        if (choice.personal()) {
+            row.addProperty("kind", "personal");
+            row.addProperty("id", choice.personalId().toString());
+            row.addProperty("name", choice.name());
+        } else {
+            row.addProperty("kind", "note");
+            row.remove("id");
+        }
+        payers.add(player.toString(), row);
+    }
+
     private JsonObject prices() {
         return root.getAsJsonObject("prices");
+    }
+
+    private JsonObject payers() {
+        if (!root.has("payers") || !root.get("payers").isJsonObject()) {
+            root.add("payers", new JsonObject());
+        }
+        return root.getAsJsonObject("payers");
     }
 
     private static BigDecimal decimal(JsonElement element) {

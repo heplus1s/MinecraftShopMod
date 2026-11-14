@@ -5,6 +5,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.jdguo.shop.ShopRuntime;
+import dev.jdguo.shop.bank.PayChoice;
+import dev.jdguo.shop.bank.ShopBank;
 import dev.jdguo.shop.catalog.CatalogEntry;
 import dev.jdguo.shop.catalog.ConfigStore;
 import dev.jdguo.shop.catalog.ShopConfig;
@@ -31,6 +33,16 @@ import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
 public final class ShopCommands {
+    private static final SuggestionProvider<ServerCommandSource> PERSONAL = (context, builder) -> {
+        String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
+        for (String name : ShopRuntime.bank.personalNames()) {
+            if (name.toLowerCase(Locale.ROOT).startsWith(remaining)) {
+                builder.suggest(name);
+            }
+        }
+        return builder.buildFuture();
+    };
+
     private static final SuggestionProvider<ServerCommandSource> ITEMS = (context, builder) -> {
         String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
         for (CatalogEntry entry : ShopRuntime.config.catalog()) {
@@ -65,6 +77,12 @@ public final class ShopCommands {
                                 .executes(ctx -> list(ctx.getSource(), 1))
                                 .then(argument("page", IntegerArgumentType.integer(1))
                                         .executes(ctx -> list(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "page")))))
+                        .then(literal("currency")
+                                .executes(ctx -> currency(ctx.getSource()))
+                                .then(literal("note").executes(ctx -> currencyNote(ctx.getSource())))
+                                .then(literal("personal")
+                                        .then(argument("name", StringArgumentType.string()).suggests(PERSONAL)
+                                                .executes(ctx -> currencyPersonal(ctx.getSource(), StringArgumentType.getString(ctx, "name"))))))
                         .then(literal("admin").requires(ShopCommands::op)
                                 .executes(ctx -> info(ctx.getSource(), ShopText.adminHelp()))
                                 .then(literal("status").executes(ctx -> status(ctx.getSource())))
@@ -99,7 +117,10 @@ public final class ShopCommands {
 
     private static int price(CommandContext<ServerCommandSource> ctx) {
         ServerCommandSource source = ctx.getSource();
-        ShopQuoteView view = ShopChestUiHooks.quote(item(ctx), 1, true);
+        ServerPlayerEntity player = player(source);
+        ShopQuoteView view = player == null
+                ? ShopChestUiHooks.quote(item(ctx), 1, true)
+                : ShopChestUiHooks.quote(player, item(ctx), 1, true);
         return "ok".equals(view.code()) || "ready".equals(view.code()) || view.listed()
                 ? info(source, view.message())
                 : problem(source, view.message());
@@ -110,9 +131,60 @@ public final class ShopCommands {
         if (page > pages) {
             return problem(source, ShopText.noSuchPage(page, pages));
         }
-        List<ShopListingView> rows = ShopChestUiHooks.listings(page);
+        ServerPlayerEntity player = player(source);
+        PayChoice pay = player == null ? PayChoice.note(ShopRuntime.bank.currencyName()) : ShopChestUiHooks.payer(player);
+        List<ShopListingView> rows = ShopChestUiHooks.listings(page, pay);
         String code = ShopText.settlementCode(ShopRuntime.bank);
-        return info(source, ShopText.list(page, pages, rows, ShopText.currency(ShopRuntime.bank), code));
+        return info(source, ShopText.list(page, pages, rows, pay.name(), code));
+    }
+
+    private static int currency(ServerCommandSource source) {
+        ServerPlayerEntity player = player(source);
+        if (player == null) {
+            return problem(source, ShopText.notPlayer());
+        }
+        if (ShopRuntime.state == null) {
+            return problem(source, ShopText.worldNotReady());
+        }
+        return info(source, ShopText.currencyNow(ShopChestUiHooks.payer(player).name()));
+    }
+
+    private static int currencyNote(ServerCommandSource source) {
+        ServerPlayerEntity player = player(source);
+        if (player == null) {
+            return problem(source, ShopText.notPlayer());
+        }
+        if (ShopRuntime.state == null) {
+            return problem(source, ShopText.worldNotReady());
+        }
+        PayChoice choice = PayChoice.note(ShopRuntime.bank.currencyName());
+        ShopRuntime.state.book().rememberPayer(player.getUuid(), choice);
+        ShopRuntime.save();
+        return info(source, ShopText.currencySet(choice.name()));
+    }
+
+    private static int currencyPersonal(ServerCommandSource source, String name) {
+        ServerPlayerEntity player = player(source);
+        if (player == null) {
+            return problem(source, ShopText.notPlayer());
+        }
+        if (ShopRuntime.state == null) {
+            return problem(source, ShopText.worldNotReady());
+        }
+        if (PayChoice.hardKey(name)) {
+            return problem(source, ShopText.hardCurrency());
+        }
+        ShopBank.PersonalNoteRef found = ShopRuntime.bank.findPersonal(name);
+        if (found == null) {
+            return problem(source, ShopText.personalMissing());
+        }
+        if (!found.priced()) {
+            return problem(source, ShopText.personalUnpriced());
+        }
+        PayChoice choice = PayChoice.personal(found.id(), found.name());
+        ShopRuntime.state.book().rememberPayer(player.getUuid(), choice);
+        ShopRuntime.save();
+        return info(source, ShopText.currencySet(choice.name()));
     }
 
     private static int status(ServerCommandSource source) {

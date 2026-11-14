@@ -2,14 +2,19 @@ package dev.jdguo.shop.bank;
 
 import dev.jdguo.bank.currency.CurrencyDef;
 import dev.jdguo.bank.ledger.BankBooks;
+import dev.jdguo.bank.market.PersonalNote;
 import dev.jdguo.bank.market.ShopQuote;
 import dev.jdguo.bank.persistence.BankRuntime;
 import dev.jdguo.shop.ShopRuntime;
+import dev.jdguo.shop.price.MoneyScale;
 import dev.jdguo.shop.price.PriceBook;
+import dev.jdguo.shop.price.PriceMath;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -20,6 +25,7 @@ import java.util.UUID;
 public final class FabricBankBridge implements ShopBank {
     private static final String ACCOUNT = "dev.jdguo.bank.market.ShopOperatingAccount";
     private static volatile Boolean hookClassPresent;
+    private static volatile Boolean decimalTransfer;
     private static boolean loggedFx;
 
     private FabricBankBridge() {}
@@ -63,12 +69,12 @@ public final class FabricBankBridge implements ShopBank {
 
     @Override
     public boolean operatingHookInstalled() {
-        return hookClassPresent();
+        return decimalTransferPresent();
     }
 
     @Override
     public boolean operatingAccountReady() {
-        return account() != null;
+        return account() != null && decimalTransferPresent();
     }
 
     @Override
@@ -87,14 +93,31 @@ public final class FabricBankBridge implements ShopBank {
     }
 
     @Override
-    public BigDecimal unitsPerDiamond() {
+    public BigDecimal unitsPerDiamond(PayChoice choice) {
+        if (choice == null || choice.hard()) {
+            return null;
+        }
         try {
             BankBooks books = books();
-            CurrencyDef note = books == null ? null : books.primaryVirtual();
-            if (note == null || note.id() == null) {
+            if (books == null) {
                 return null;
             }
-            return books.unitsPer(note.id(), "diamond");
+            if (!choice.personal()) {
+                CurrencyDef note = books.primaryVirtual();
+                if (note == null || note.id() == null) {
+                    return null;
+                }
+                return books.unitsPer(note.id(), "diamond");
+            }
+            PersonalNote series = books.personalNoteById(choice.personalId());
+            if (series == null || series.bankrupt()) {
+                return null;
+            }
+            BigDecimal diamondsEach = books.personalDiamondPrice(series);
+            if (diamondsEach == null || diamondsEach.signum() <= 0) {
+                return null;
+            }
+            return BigDecimal.ONE.divide(diamondsEach, PriceMath.MC);
         } catch (Throwable error) {
             logFx(error);
             return null;
@@ -138,17 +161,27 @@ public final class FabricBankBridge implements ShopBank {
     }
 
     @Override
-    public BigInteger playerBalance(UUID player) {
+    public BigDecimal playerBalance(UUID player, PayChoice choice) {
+        if (choice == null || choice.hard()) {
+            return null;
+        }
         Object account = account();
-        if (account != null) {
-            BigInteger fromHook = invoke(account, "playerBalance", new Class<?>[] {UUID.class}, player);
+        if (account != null && decimalTransferPresent()) {
+            BigDecimal fromHook = invoke(account, "playerBalance",
+                    new Class<?>[] {UUID.class, String.class}, player, choice.key());
             if (fromHook != null) {
-                return fromHook;
+                return MoneyScale.quantize(fromHook);
             }
         }
         try {
             BankBooks books = books();
-            return books == null ? null : books.balance(player, currencyId());
+            if (books == null) {
+                return null;
+            }
+            BigInteger whole = choice.personal()
+                    ? books.personalHolding(choice.personalId(), player)
+                    : books.balance(player, currencyId());
+            return whole == null ? null : MoneyScale.quantize(new BigDecimal(whole));
         } catch (Throwable error) {
             logFx(error);
             return null;
@@ -156,47 +189,95 @@ public final class FabricBankBridge implements ShopBank {
     }
 
     @Override
-    public BigInteger operatingBalance() {
-        Object account = account();
-        if (account == null) {
+    public BigDecimal operatingBalance(PayChoice choice) {
+        if (choice == null || choice.hard()) {
             return null;
         }
-        return invoke(account, "balance", new Class<?>[0]);
+        Object account = account();
+        if (account == null || !decimalTransferPresent()) {
+            return null;
+        }
+        BigDecimal balance = invoke(account, "balance", new Class<?>[] {String.class}, choice.key());
+        return balance == null ? null : MoneyScale.quantize(balance);
     }
 
     @Override
-    public PostResult post(UUID player, BigInteger amount, boolean playerPaysShop) {
+    public PostResult post(UUID player, PayChoice choice, BigDecimal amount, boolean playerPaysShop) {
+        if (choice == null || choice.hard()) {
+            return PostResult.fail("hard_currency");
+        }
         if (!ledgerReady()) {
             return PostResult.fail("bank_not_ready");
         }
-        if (!hookClassPresent()) {
+        if (!decimalTransferPresent()) {
             return PostResult.fail("bank_hook_missing");
         }
         Object account = account();
         if (account == null) {
             return PostResult.fail("bank_not_ready");
         }
-        if (amount == null || amount.signum() <= 0) {
+        BigDecimal due = MoneyScale.quantize(amount);
+        if (!MoneyScale.positive(due)) {
             return PostResult.fail("bank_rejected");
         }
         try {
             Object result = account.getClass()
-                    .getMethod("transfer", UUID.class, BigInteger.class, boolean.class)
-                    .invoke(account, player, amount, playerPaysShop);
+                    .getMethod("transfer", UUID.class, String.class, BigDecimal.class, boolean.class)
+                    .invoke(account, player, choice.key(), due, playerPaysShop);
             String code = failureCode(result);
             if (code != null) {
                 ShopRuntime.LOGGER.info("商店结算被拒绝：{}", code);
-                return PostResult.fail(normalize(code), playerBalance(player), operatingBalance());
+                return PostResult.fail(normalize(code), playerBalance(player, choice), operatingBalance(choice));
             }
             try {
                 BankRuntime.save();
             } catch (Throwable error) {
                 ShopRuntime.LOGGER.warn("商店结算已经入账，但中央银行存档没有立即写下", error);
             }
-            return PostResult.ok(playerBalance(player), operatingBalance());
+            return PostResult.ok(playerBalance(player, choice), operatingBalance(choice));
         } catch (Throwable error) {
             ShopRuntime.LOGGER.error("商店结算调用失败。按约定，失败时中央银行不应改动余额。", error);
             return PostResult.fail("bank_rejected");
+        }
+    }
+
+    @Override
+    public PersonalNoteRef findPersonal(String name) {
+        try {
+            BankBooks books = books();
+            if (books == null || name == null || name.isBlank() || PayChoice.hardKey(name)) {
+                return null;
+            }
+            PersonalNote series = books.personalNoteByName(name);
+            if (series == null) {
+                return null;
+            }
+            BigDecimal diamonds = books.personalDiamondPrice(series);
+            boolean priced = !series.bankrupt() && diamonds != null && diamonds.signum() > 0;
+            return new PersonalNoteRef(series.id(), series.name(), priced);
+        } catch (Throwable error) {
+            logFx(error);
+            return null;
+        }
+    }
+
+    @Override
+    public List<String> personalNames() {
+        try {
+            BankBooks books = books();
+            if (books == null) {
+                return List.of();
+            }
+            List<String> names = new ArrayList<>();
+            for (PersonalNote series : books.personalNotes()) {
+                if (series != null && series.name() != null && !series.name().isBlank() && !series.bankrupt()) {
+                    names.add(series.name());
+                }
+            }
+            return List.copyOf(names);
+        } catch (Throwable error) {
+            logFx(error);
+            return List.of();
         }
     }
 
@@ -242,6 +323,31 @@ public final class FabricBankBridge implements ShopBank {
         }
     }
 
+    private static boolean decimalTransferPresent() {
+        Boolean cached = decimalTransfer;
+        if (cached != null) {
+            return cached;
+        }
+        if (!hookClassPresent()) {
+            decimalTransfer = Boolean.FALSE;
+            return false;
+        }
+        try {
+            Class<?> type = Class.forName(ACCOUNT);
+            type.getMethod("transfer", UUID.class, String.class, BigDecimal.class, boolean.class);
+            decimalTransfer = Boolean.TRUE;
+            return true;
+        } catch (NoSuchMethodException error) {
+            decimalTransfer = Boolean.FALSE;
+            ShopRuntime.LOGGER.info("商店经营账户还不能按四位小数过户一种选定货币");
+            return false;
+        } catch (Throwable error) {
+            decimalTransfer = Boolean.FALSE;
+            ShopRuntime.LOGGER.warn("无法确认商店经营账户的过户方法", error);
+            return false;
+        }
+    }
+
     private static Object account() {
         if (!hookClassPresent()) {
             return null;
@@ -261,6 +367,8 @@ public final class FabricBankBridge implements ShopBank {
         try {
             Object value = target.getClass().getMethod(name, types).invoke(target, args);
             return (T) value;
+        } catch (NoSuchMethodException error) {
+            return null;
         } catch (Throwable error) {
             ShopRuntime.LOGGER.warn("读取商店经营账户的 {} 失败", name, error);
             return null;

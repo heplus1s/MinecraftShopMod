@@ -34,15 +34,19 @@ Without the bank, the shop still loads. Diamond-equivalent prices can be read. B
 
 每种物品有一个起点，表示它相对于钻石有多难获得。钻石的起点是 1。这只是开张时的价格，不表示以后就该停在这里。
 
-成交时再按中央银行当时的汇率，把钻石等值换成银行券。汇率变了，要付的银行券会变，已经记下的钻石等值不会被汇率改写。
+成交时按中央银行当时的汇率，把钻石等值换成玩家选定的一种货币。玩家可以选银行券，也可以选一种个人银行券。一笔订单只用这一种，不找铜锭，也不找钻石。铜锭和钻石本身不能当货款。
+
+单价、这一笔的合计、记下的新价格，以及用来比较的余额，都算到小数点后四位。整数零显示成 `0`。不到一个银行券也可以买，只要选定货币的余额够付这四位小数。余额不够就整笔拒绝，不会只成交一部分。没有起点、也没有已经成交的价格时，显示「暂无牌价」，不会临时编一个价。
 
 每成交一个物品，价格按当前价格小幅移动。玩家购买，价格上升。玩家出售，价格下降。没有把价格拉回起点的力量。买卖多了，价格可以离起点很远，以便靠近游戏里真实的供求。
 
-一步的默认大小是 0.002，也就是当前价格的千分之二。一次购买多个时，价格沿着这一小步往上走，货款按走过的价格相加。不足一个银行券的零头向上进位。一整笔还不足一个银行券时，这次不成交，聊天里会写出至少要多少个。
+一步的默认大小是 0.002，也就是当前价格的千分之二。一次购买多个时，价格沿着这一小步往上走，货款按走过的价格相加，再折成选定货币的四位小数。
 
-Prices start from gathering difficulty relative to one diamond. That anchor is only the opening price. At the moment of a trade it is converted with the bank's current rate. The stored diamond price is not rewritten when the rate moves.
+Prices start from gathering difficulty relative to one diamond. That anchor is only the opening price. At the moment of a trade it is converted, at the bank's current rate, into the one currency the player selected: the central bank note, or one personal note. Copper and diamond are not payment currencies, and one order does not use a second currency.
 
-Each item in a trade takes one small step off the current price. Buying steps up. Selling steps down. Nothing pulls the price back to the anchor, so a long run of trades can travel far from the start. The default step is 0.002 of the current price. A payment is the sum along that path, then rounded up to a whole bank note. An order that is still below one note is refused, and chat tells you how many items would be enough.
+Unit prices, order totals, posted steps, and the balances compared for a trade are kept to four decimal places. Integer zero is shown as `0`. An order below one unit is allowed when the selected balance covers that four-decimal total. A short balance refuses the whole order. A missing anchor or live quote is shown as 暂无牌价 and is not replaced with a made-up price.
+
+Each item in a trade takes one small step off the current price. Buying steps up. Selling steps down. Nothing pulls the price back to the anchor, so a long run of trades can travel far from the start. The default step is 0.002 of the current price.
 
 ## 指令
 
@@ -56,6 +60,9 @@ Command words are English. Chat replies are Chinese.
 /shop sell <item> <count>
 /shop price <item>
 /shop list [page]
+/shop currency
+/shop currency note
+/shop currency personal <name>
 /shop admin status
 /shop admin reload
 /shop admin step <fraction>
@@ -66,8 +73,11 @@ Command words are English. Chat replies are Chinese.
 - `/shop` 列出上面的写法。
 - `/shop buy <item> <count>` 向服务器购买。`<item>` 用物品标识，例如 `minecraft:diamond`。`<count>` 是数量。
 - `/shop sell <item> <count>` 把背包里的普通物品卖给服务器。带有附加数据的物品不会被收走。
-- `/shop price <item>` 查看现价、起点，以及按当前汇率换成银行券后的金额。
+- `/shop price <item>` 查看现价、起点，以及按当前汇率换成所选货币后的四位小数金额。没有牌价时显示「暂无牌价」。
 - `/shop list [page]` 翻阅目录。页码从 1 开始。
+- `/shop currency` 查看当前结算货币。
+- `/shop currency note` 改用银行券结算。
+- `/shop currency personal <name>` 改用一种个人银行券结算。`<name>` 是这张券已登记的名字。
 - `/shop admin status` 查看步长、汇率、储蓄总池和商店经营账户是否已经接上。需要管理员。
 - `/shop admin reload` 重新读取配置。已经成交的价格还在。
 - `/shop admin step <fraction>` 修改每成交一个物品的步长，例如 `0.002`。不能超过 `0.2`。
