@@ -7,6 +7,7 @@ import dev.jdguo.shop.catalog.ShopConfig;
 import dev.jdguo.shop.price.MoneyScale;
 import dev.jdguo.shop.price.PriceBook;
 import dev.jdguo.shop.price.PriceMath;
+import dev.jdguo.shop.price.MarketInfluence;
 import dev.jdguo.shop.price.PricePath;
 import dev.jdguo.shop.text.ShopText;
 import dev.jdguo.shop.ui.ShopListingView;
@@ -79,7 +80,8 @@ public final class TradeDesk {
                     ? new PriceBook.Lookup(entry, MoneyScale.positive(entry.anchorDiamonds())
                     ? MoneyScale.quantize(entry.anchorDiamonds()) : null, false)
                     : session.book().lookup(config, entry.itemId());
-            BigDecimal each = MoneyScale.positive(lookup.diamondEach()) ? lookup.diamondEach() : null;
+            BigDecimal each = MoneyScale.positive(lookup.diamondEach())
+                    ? MarketInfluence.adjusted(entry.itemId(), lookup.diamondEach(), rate(session.bank(), PayChoice.note())) : null;
             BigDecimal notes = each == null ? null : PriceMath.charge(each, rate);
             rows.add(new ShopListingView(entry.itemId(), entry.name(), each, entry.anchorDiamonds(), notes));
         }
@@ -124,7 +126,11 @@ public final class TradeDesk {
                 return fail(prepared, "refunded", ShopText.refunded());
             }
         }
-        session.book().commit(prepared.itemId, prepared.path.end());
+        var config = session.config();
+        BigDecimal baseNext = (buying
+                ? PriceMath.buy(prepared.basePrice, config.stepFraction(), config.minDiamondPrice(), prepared.count)
+                : PriceMath.sell(prepared.basePrice, config.stepFraction(), config.minDiamondPrice(), prepared.count)).end();
+        session.book().commit(prepared.itemId, baseNext);
         session.persist();
         BigDecimal balance = post.playerBalance() != null
                 ? post.playerBalance()
@@ -166,6 +172,12 @@ public final class TradeDesk {
         }
         prepared.entry = entry;
         PriceBook.Lookup lookup = session.book().lookup(config, prepared.itemId);
+        prepared.basePrice = lookup.diamondEach();
+        if (MoneyScale.positive(prepared.basePrice)) {
+            lookup = new PriceBook.Lookup(entry,
+                    MarketInfluence.tradeQuote(prepared.itemId, prepared.basePrice, rate(bank, PayChoice.note()), buying),
+                    lookup.corrupt());
+        }
         prepared.lookup = lookup;
         if (!MoneyScale.positive(lookup.diamondEach())) {
             return stop(prepared, "no_quote", ShopText.noQuote(), forTrade);
@@ -307,6 +319,7 @@ public final class TradeDesk {
         private String currency = "银行券";
         private String settlementCode = "ready";
         private CatalogEntry entry;
+        BigDecimal basePrice;
         private PriceBook.Lookup lookup;
         private PricePath path;
         private BigDecimal charge;
