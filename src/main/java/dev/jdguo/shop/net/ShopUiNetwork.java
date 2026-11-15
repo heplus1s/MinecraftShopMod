@@ -1,5 +1,7 @@
 package dev.jdguo.shop.net;
 
+import dev.jdguo.shop.ShopRuntime;
+import dev.jdguo.shop.bank.PayChoice;
 import dev.jdguo.shop.ui.ShopChestUiHooks;
 import dev.jdguo.shop.ui.ShopQuoteView;
 import dev.jdguo.shop.ui.ShopTradeResult;
@@ -54,40 +56,63 @@ public final class ShopUiNetwork {
             final String itemId;
             final int count;
             final int page;
+            final String currency;
             try {
                 action = buf.readString(32);
                 itemId = buf.readString(128);
                 count = buf.readVarInt();
                 page = buf.readVarInt();
+                currency = buf.isReadable() ? buf.readString(64) : null;
             } catch (RuntimeException error) {
                 return;
             }
-            server.execute(() -> handle(player, action, itemId, count, page));
+            server.execute(() -> handle(player, action, itemId, count, page, currency));
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> sessions.remove(handler.player.getUuid()));
     }
 
-    private static void handle(ServerPlayerEntity player, String action, String itemId, int count, int page) {
+    private static void handle(ServerPlayerEntity player, String action, String itemId, int count, int page, String currency) {
         if (!sessions.contains(player.getUuid())) {
             return;
         }
         int shownPage = page < 1 ? 1 : page;
+        PayChoice pay = currency == null ? ShopChestUiHooks.payer(player) : currency(currency);
+        if (pay == null) {
+            sync(player, shownPage, "所选币种不可用，本次没有结算。");
+            return;
+        }
         switch (action) {
             case "list" -> sync(player, shownPage, "");
             case "quote" -> {
-                ShopQuoteView view = ShopChestUiHooks.quote(player, itemId, Math.max(count, 1), true);
+                ShopQuoteView view = ShopChestUiHooks.quote(itemId, Math.max(count, 1), true, pay);
                 sync(player, shownPage, view.message());
             }
             case "buy" -> {
-                ShopTradeResult result = ShopChestUiHooks.buy(player, itemId, count);
+                ShopTradeResult result = ShopChestUiHooks.buy(player, itemId, count, pay);
                 sync(player, shownPage, result.message());
             }
             case "sell" -> {
-                ShopTradeResult result = ShopChestUiHooks.sell(player, itemId, count);
+                ShopTradeResult result = ShopChestUiHooks.sell(player, itemId, count, pay);
                 sync(player, shownPage, result.message());
             }
             default -> sync(player, shownPage, "不认识这个操作。");
         }
+    }
+
+    private static PayChoice currency(String key) {
+        if ("note".equals(key)) {
+            return PayChoice.note(ShopRuntime.bank.currencyName());
+        }
+        if (!key.startsWith("personal:")) {
+            return null;
+        }
+        for (String name : ShopRuntime.bank.personalNames()) {
+            var note = ShopRuntime.bank.findPersonal(name);
+            if (note != null && ("personal:" + note.id()).equals(key)) {
+                return PayChoice.personal(note.id(), note.name());
+            }
+        }
+        return null;
     }
 
     private static void sync(ServerPlayerEntity player, int page, String message) {

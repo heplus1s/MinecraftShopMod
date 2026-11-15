@@ -34,19 +34,27 @@ public final class ShopChestUiHooks {
     }
 
     public static ShopTradeResult buy(ServerPlayerEntity player, String itemId, int count) {
+        return buy(player, itemId, count, payer(player));
+    }
+
+    public static ShopTradeResult buy(ServerPlayerEntity player, String itemId, int count, PayChoice pay) {
         requirePlayer(player);
         if (!PlayerPurse.knownItem(itemId)) {
             return ShopTradeResult.fail("bad_item", dev.jdguo.shop.text.ShopText.badItem());
         }
-        return TradeDesk.buy(ShopRuntime.session(), new PlayerPurse(player), player.getUuid(), payer(player), itemId, count);
+        return TradeDesk.buy(ShopRuntime.session(), new PlayerPurse(player), player.getUuid(), pay, itemId, count);
     }
 
     public static ShopTradeResult sell(ServerPlayerEntity player, String itemId, int count) {
+        return sell(player, itemId, count, payer(player));
+    }
+
+    public static ShopTradeResult sell(ServerPlayerEntity player, String itemId, int count, PayChoice pay) {
         requirePlayer(player);
         if (!PlayerPurse.knownItem(itemId)) {
             return ShopTradeResult.fail("bad_item", dev.jdguo.shop.text.ShopText.badItem());
         }
-        return TradeDesk.sell(ShopRuntime.session(), new PlayerPurse(player), player.getUuid(), payer(player), itemId, count);
+        return TradeDesk.sell(ShopRuntime.session(), new PlayerPurse(player), player.getUuid(), pay, itemId, count);
     }
 
     public static List<ShopListingView> listings(int page) {
