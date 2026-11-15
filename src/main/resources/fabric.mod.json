@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "shopmod",
+  "version": "${version}",
+  "name": "Server Shop",
+  "description": "Server shop for vanilla Minecraft 1.20.1 clients. Players buy from and sell to the server. Payments are book entries in the central bank savings pool. Dedicated servers and singleplayer both load this mod.",
+  "authors": ["heplus1s"],
+  "contact": {
+    "homepage": "https://github.com/heplus1s/MinecraftShopMod",
+    "sources": "https://github.com/heplus1s/MinecraftShopMod"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.jdguo.shop.ShopMod"]
+  },
+  "suggests": {
+    "bankmod": "*"
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}
