@@ -4,7 +4,7 @@ Fabric 1.20.1 商店模组：玩家和服务器买卖物品，货款记在央行
 
 A Fabric 1.20.1 shop where players buy from and sell to the server. Payments go to a shop operating account under central-bank savings. Prices start from gather difficulty relative to diamonds, then drift with supply and demand.
 
-当前先提供指令。箱子界面这次不做，但会预留接口，以后可以直接接上。可选的独立客户端界面以后放在 MinecraftUIMod。不装界面包也可以进服。
+支持指令、实体柜台和原版箱子交易界面。可选的独立客户端界面放在 MinecraftUIMod。不装界面包也可以进服。
 
 Commands come first. A chest GUI is not included yet, but the hook is reserved. Optional client UI will live in MinecraftUIMod. Vanilla clients can still join.
 
@@ -100,11 +100,11 @@ The mod still loads. Price and list keep working in diamond equivalents. Buy and
 
 ## 箱子界面和独立客户端
 
-这次没有箱子界面。以后的箱子界面调用 `dev.jdguo.shop.ui.ShopChestUiHooks`，用它报价、购买和出售。计价和入账仍留在商店里，不必重写。
+柜台和 `/shop ui` 打开原版箱子界面，调用 `dev.jdguo.shop.ui.ShopChestUiHooks` 报价、购买和出售，计价和入账仍由既有交易服务处理。
 
 可选的客户端以后放在 [MinecraftUIMod](https://github.com/heplus1s/MinecraftUIMod)。它如果要同步，使用服务器上的 `shopmod:hello`、`shopmod:action` 和 `shopmod:sync`。没有安装这个界面的原版客户端可以照常进服，服务器不会向它发送这个频道。
 
-There is no chest screen in this version. A later one should call `dev.jdguo.shop.ui.ShopChestUiHooks`. Optional client UI belongs in MinecraftUIMod and may use the `shopmod` hello, action, and sync payloads. Vanilla clients can join without that pack.
+The counter and `/shop ui` open a vanilla chest screen using `dev.jdguo.shop.ui.ShopChestUiHooks`. Optional client UI belongs in MinecraftUIMod and may use the `shopmod` hello, action, and sync payloads. Vanilla clients can join without that pack.
 
 ## 配置和存档
 

@@ -102,7 +102,9 @@ public final class ShopOutlets {
             world.iterateEntities().forEach(e->{if(e.getCommandTags().contains(TAG)) all.add(e);});
             for(Entity e:all) {
                 ShopOutlet o=state.find(name(e));
-                if(o==null || !world.getRegistryKey().getValue().toString().equals(o.dimension()) || world.getBlockState(new BlockPos(o.x(),o.y(),o.z())).isAir()) { drop(e); continue; }
+                if(o==null || !world.getRegistryKey().getValue().toString().equals(o.dimension())) { drop(e); continue; }
+                if(!world.isChunkLoaded(o.x()>>4,o.z()>>4)) { drop(e); continue; }
+                if(world.getBlockState(new BlockPos(o.x(),o.y(),o.z())).isAir()) { drop(e); continue; }
                 boolean root=e.getCommandTags().contains(ROOT), sign=e.getCommandTags().contains(SIGN);
                 if(root || sign) {
                     double y=o.y()+(root?1:3.3);
