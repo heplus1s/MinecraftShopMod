@@ -74,11 +74,7 @@ public final class PlayerPurse implements ItemPurse {
         catch (RuntimeException unchanged) { return Delivery.NO_CHANGE; }
         if (!player.addCommandTag(marker)) return Delivery.UNKNOWN;
         try {
-            player.getServer().getPlayerManager().saveAllPlayerData();
-            java.nio.file.Path path = playerFile();
-            try (var channel = java.nio.channels.FileChannel.open(path, java.nio.file.StandardOpenOption.WRITE)) {
-                channel.force(true);
-            }
+            DurablePlayerInventory.save(player);
             return "applied".equals(receiptStatus(reference)) ? Delivery.APPLIED : Delivery.UNKNOWN;
         } catch (Exception uncertain) { return Delivery.UNKNOWN; }
     }
@@ -100,9 +96,19 @@ public final class PlayerPurse implements ItemPurse {
             var tags = nbt.getList("Tags", 8);
             for (int i = 0; i < tags.size(); i++)
                 if ((RECEIPT_PREFIX + reference).equals(tags.getString(i)))
-                    return player.getCommandTags().contains(RECEIPT_PREFIX + reference) ? "applied" : "unknown";
-            return "none";
+                    return player.getCommandTags().contains(RECEIPT_PREFIX + reference)
+                            && DurablePlayerInventory.integratedReceiptConfirmed(player, RECEIPT_PREFIX + reference)
+                            ? "applied" : "unknown";
+            // A memory/host receipt without matching playerdata is uncertain, not
+            // evidence that delivery never happened. Journal cancellation must not
+            // discard an already-taken item or refund an already-given item.
+            return missingDiskReceiptStatus(player.getCommandTags().contains(RECEIPT_PREFIX + reference),
+                    DurablePlayerInventory.integratedHostReceiptPresent(player, RECEIPT_PREFIX + reference));
         } catch (Exception unreadable) { return "unknown"; }
+    }
+
+    static String missingDiskReceiptStatus(boolean memoryReceipt, boolean hostReceipt) {
+        return memoryReceipt || hostReceipt ? "unknown" : "none";
     }
 
     @Override public void forgetReceipt(String reference) {
