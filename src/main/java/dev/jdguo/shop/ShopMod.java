@@ -20,6 +20,7 @@ public final class ShopMod implements ModInitializer {
     public void onInitialize() {
         ConfigStore.load();
         ShopCommands.register();
+        dev.jdguo.shop.outlet.ShopOutlets.register();
         ShopUiNetwork.register();
         ShopRuntime.bank = connectBank();
 
