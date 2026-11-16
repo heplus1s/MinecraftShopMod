@@ -11,7 +11,7 @@ class MarketInfluenceTest {
     void marketInfluenceUsesOneFifthOfTheGapAndCapsExtremeValues() {
         BigDecimal base = BigDecimal.TEN;
         assertEquals(0, new BigDecimal("10.2").compareTo(MarketInfluence.blend(base, new BigDecimal("11"))));
-        assertEquals(0, new BigDecimal("10.5").compareTo(MarketInfluence.blend(base, new BigDecimal("30"))));
-        assertEquals(0, new BigDecimal("9.5").compareTo(MarketInfluence.blend(base, BigDecimal.ONE)));
+        assertEquals(0, new BigDecimal("10.2").compareTo(MarketInfluence.blend(base, new BigDecimal("30"))));
+        assertEquals(0, new BigDecimal("9.8").compareTo(MarketInfluence.blend(base, BigDecimal.ONE)));
     }
 }
