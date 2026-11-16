@@ -17,6 +17,8 @@ public final class ShopText {
         return """
                 /shop buy <item> <count>
                 /shop sell <item> <count>
+                /shop confirm <quoteId>
+                /shop cancel
                 /shop price <item>
                 /shop list [page]
                 /shop currency
@@ -24,6 +26,7 @@ public final class ShopText {
                 /shop currency personal <name>
                 /shop admin status
                 /shop admin reload
+                /shop admin spread <fraction>
                 /shop admin step <fraction>
                 /shop admin anchor <item> <diamonds>
                 /shop admin reset <item>
@@ -34,10 +37,11 @@ public final class ShopText {
         return """
                 /shop admin status
                 /shop admin reload
+                /shop admin spread <fraction>
                 /shop admin step <fraction>
                 /shop admin anchor <item> <diamonds>
                 /shop admin reset <item>
-                查看商店和中央银行的连接，或调整步长与起点。已有的成交价不会被整表清除。""";
+                查看商店和中央银行的连接，或调整价差、步长与起点。已有的成交价不会被整表清除。""";
     }
 
     public static String notPlayer() {
@@ -65,7 +69,7 @@ public final class ShopText {
     }
 
     public static String currencySet(String name) {
-        return "结算货币已改为" + name + "。之后的购买和出售只使用这一种货币。";
+        return "结算货币已改为" + name + "。购买按所选币支付；出售选个人币时先预览发行人挂币与央行券补差，确认后成交。";
     }
 
     public static String zeroCharge() {

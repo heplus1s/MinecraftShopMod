@@ -70,6 +70,14 @@ public final class ShopCommands {
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                         .then(argument("count", IntegerArgumentType.integer(1))
                                                 .executes(ctx -> trade(ctx, false)))))
+                        .then(literal("confirm").then(argument("quoteId", StringArgumentType.word())
+                                .executes(ctx -> confirmPayout(ctx.getSource(),StringArgumentType.getString(ctx,"quoteId")))))
+                        .then(literal("cancel").executes(ctx -> {
+                            ServerPlayerEntity who=player(ctx.getSource());
+                            if(who==null)return problem(ctx.getSource(),ShopText.notPlayer());
+                            dev.jdguo.shop.ui.ShopPayoutPreviews.cancel(who.getUuid());
+                            return info(ctx.getSource(),"已取消组合付款预览，未执行交易。");
+                        }))
                         .then(literal("price")
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                         .executes(ctx -> price(ctx))))
@@ -87,6 +95,9 @@ public final class ShopCommands {
                                 .executes(ctx -> info(ctx.getSource(), ShopText.adminHelp()))
                                 .then(literal("status").executes(ctx -> status(ctx.getSource())))
                                 .then(literal("reload").executes(ctx -> reload(ctx.getSource())))
+                                .then(literal("spread")
+                                        .then(argument("fraction", StringArgumentType.word())
+                                                .executes(ctx -> spread(ctx.getSource(), StringArgumentType.getString(ctx, "fraction")))))
                                 .then(literal("step")
                                         .then(argument("fraction", StringArgumentType.word())
                                                 .executes(ctx -> step(ctx.getSource(), StringArgumentType.getString(ctx, "fraction")))))
@@ -109,10 +120,23 @@ public final class ShopCommands {
         }
         String itemId = item(ctx);
         int count = IntegerArgumentType.getInteger(ctx, "count");
+        PayChoice selected=ShopChestUiHooks.payer(player);
+        if(!buying && selected.personal()) {
+            var preview=ShopChestUiHooks.previewPayout(player,itemId,count,selected);
+            return preview==null ? problem(source,"无法生成组合付款预览，请检查央行券资金或发行人挂单。") : info(source,preview.message());
+        }
         ShopTradeResult result = buying
                 ? ShopChestUiHooks.buy(player, itemId, count)
                 : ShopChestUiHooks.sell(player, itemId, count);
         return result.success() ? okay(source, result.message()) : problem(source, result.message());
+    }
+
+    private static int confirmPayout(ServerCommandSource source,String quoteId) {
+        ServerPlayerEntity player=player(source);
+        if(player==null)return problem(source,ShopText.notPlayer());
+        var reply=ShopChestUiHooks.confirmPayout(player,quoteId);
+        if(reply.replacement()!=null)return info(source,reply.result().message()+"\n"+reply.replacement().message());
+        return reply.result().success()?okay(source,reply.result().message()):problem(source,reply.result().message());
     }
 
     private static int price(CommandContext<ServerCommandSource> ctx) {
@@ -199,6 +223,23 @@ public final class ShopCommands {
         } catch (IOException | RuntimeException error) {
             ShopRuntime.LOGGER.error("商店配置读不了", error);
             return problem(source, ShopText.reloadFailed());
+        }
+    }
+
+    private static int spread(ServerCommandSource source, String raw) {
+        BigDecimal spread = decimal(raw);
+        if (spread == null) return problem(source, ShopText.badDecimal());
+        try {
+            ShopConfig next = ShopRuntime.config.withSpread(spread);
+            ConfigStore.write(next);
+            ShopRuntime.config = next;
+            return info(source, "买卖价差已设为中心价的 " + spread.multiply(new BigDecimal("100")).stripTrailingZeros().toPlainString()
+                    + "%（买价加一半，卖价减一半；数量冲击和舍入另计）。");
+        } catch (IllegalArgumentException error) {
+            return problem(source, "价差比例必须在 0.0001 到 1 之间，例如 0.04 表示 4%。");
+        } catch (IOException error) {
+            ShopRuntime.LOGGER.error("商店价差配置写不了", error);
+            return problem(source, "配置没有保存，价差保持原值。");
         }
     }
 

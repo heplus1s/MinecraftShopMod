@@ -31,15 +31,46 @@ public final class ShopUiSnapshot {
         List<ShopListingView> rows = ShopChestUiHooks.listings(shown, pay);
         JsonObject root = new JsonObject();
         root.addProperty("protocol", ShopUiNetwork.PROTOCOL);
+        root.addProperty("explicitCurrency", true);
         root.addProperty("bankLoaded", ShopRuntime.bank.modLoaded());
         root.addProperty("settlementReady", ShopRuntime.bank.operatingAccountReady()
                 && ShopRuntime.bank.unitsPerDiamond(pay) != null);
         root.addProperty("currency", pay.name());
         root.addProperty("currencyKey", pay.key());
+        root.addProperty("sellCurrency", pay.name());
+        root.addProperty("sellCurrencyKey", pay.key());
         root.addProperty("step", MoneyScale.display(ShopRuntime.config.stepFraction()));
+        root.addProperty("spread", MoneyScale.display(ShopRuntime.config.spreadFraction()));
         root.addProperty("page", shown);
         root.addProperty("pages", pages);
         root.addProperty("message", message == null || message.isBlank() ? "" : "[商店] " + message);
+        var bank = ShopRuntime.bank;
+        var centralRate = bank.unitsPerDiamond(PayChoice.note());
+        JsonArray currencies = new JsonArray();
+        JsonArray notes = new JsonArray();
+        if (centralRate != null && centralRate.signum() > 0) {
+            JsonObject central = new JsonObject();
+            central.addProperty("id", "note");
+            central.addProperty("unitsPerDiamond", centralRate.toPlainString());
+            currencies.add(central);
+        }
+        for (String name : bank.personalNames()) {
+            var note = bank.findPersonal(name);
+            if (note == null) {
+                continue;
+            }
+            var choice = PayChoice.personal(note.id(), note.name());
+            var rate = bank.unitsPerDiamond(choice);
+            JsonObject row = new JsonObject();
+            row.addProperty("id", choice.key());
+            row.addProperty("name", note.name());
+            if (centralRate != null && rate != null && rate.signum() > 0) {
+                row.addProperty("price", centralRate.divide(rate, java.math.MathContext.DECIMAL128).toPlainString());
+            }
+            notes.add(row);
+        }
+        root.add("currencies", currencies);
+        root.add("notes", notes);
         JsonArray listings = new JsonArray();
         for (ShopListingView row : rows) {
             JsonObject item = new JsonObject();

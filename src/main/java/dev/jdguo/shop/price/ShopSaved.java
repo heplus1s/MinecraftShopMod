@@ -12,11 +12,11 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * World price document. Version 1 stores each live diamond-equivalent under {@code prices}.
+ * World price document. Version 3 adds typed issuer-payout plans; older pending rows retain their original semantics.
  * Unknown keys are written back. A newer version is refused so an older build cannot blank the save.
  */
 public final class ShopSaved {
-    public static final int VERSION = 1;
+    public static final int VERSION = 3;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
@@ -55,7 +55,72 @@ public final class ShopSaved {
         } else if (!root.get("prices").isJsonObject()) {
             throw new IllegalStateException("Shop save prices is not an object");
         }
+        root.addProperty("version", VERSION);
         return new ShopSaved(root);
+    }
+
+    public long journalRevision() { return root.has("journalRevision") ? root.get("journalRevision").getAsLong() : 0L; }
+
+    public void beginTrade(String reference, UUID player, String item, int count, boolean buying,
+                           String currency, BigDecimal amount, BigDecimal before, BigDecimal after) {
+        JsonObject row = new JsonObject();
+        row.addProperty("player", player.toString()); row.addProperty("item", item);
+        row.addProperty("count", count); row.addProperty("buying", buying);
+        row.addProperty("currency", currency); row.addProperty("amount", amount.toPlainString());
+        row.addProperty("priceBefore", before.toPlainString()); row.addProperty("priceAfter", after.toPlainString());
+        row.addProperty("createdAt", System.currentTimeMillis());
+        trades().add(reference, row);
+        tradeState(reference, "prepared");
+    }
+    public void beginIssuerPayout(String reference, UUID player, dev.jdguo.shop.trade.PrivatePayoutPlan plan) {
+        beginTrade(reference, player, plan.itemId(), plan.count(), false, plan.currency().key(),
+                plan.centralBudget(), plan.priceBefore(), plan.priceAfter());
+        JsonObject row = trades().getAsJsonObject(reference);
+        row.addProperty("kind", "issuer_offer_payout");
+        row.add("payoutPlan", plan.toJson());
+    }
+    public void tradeState(String reference, String state) {
+        JsonObject row = trades().getAsJsonObject(reference);
+        if (row == null) throw new IllegalArgumentException("Unknown reference");
+        row.addProperty("state", state);
+        row.addProperty("updatedAt", System.currentTimeMillis());
+        root.addProperty("journalRevision", journalRevision() + 1);
+    }
+    public String pendingTrade(UUID player) {
+        for (var entry : trades().entrySet()) {
+            JsonObject row = entry.getValue().getAsJsonObject();
+            String state = row.get("state").getAsString();
+            if (player.toString().equals(row.get("player").getAsString())
+                    && !state.equals("completed") && !state.equals("cancelled")) return entry.getKey();
+        }
+        return null;
+    }
+    public JsonObject trade(String reference) {
+        JsonObject row = trades().getAsJsonObject(reference);
+        return row == null ? null : row.deepCopy();
+    }
+    public java.util.List<String> completedTrades(UUID player) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        for (var entry : trades().entrySet()) {
+            JsonObject row = entry.getValue().getAsJsonObject();
+            String state = row.get("state").getAsString();
+            if (player.toString().equals(row.get("player").getAsString())
+                    && (state.equals("completed") || state.equals("cancelled"))) result.add(entry.getKey());
+        }
+        return result;
+    }
+    public String pendingItem(String item) {
+        for (var entry : trades().entrySet()) {
+            JsonObject row = entry.getValue().getAsJsonObject();
+            String state = row.get("state").getAsString();
+            if (item.equals(row.get("item").getAsString())
+                    && !state.equals("completed") && !state.equals("cancelled")) return entry.getKey();
+        }
+        return null;
+    }
+    private JsonObject trades() {
+        if (!root.has("trades")) root.add("trades", new JsonObject());
+        return root.getAsJsonObject("trades");
     }
 
     public String toJson() {

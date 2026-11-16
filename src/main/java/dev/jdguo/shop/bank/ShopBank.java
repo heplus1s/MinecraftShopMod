@@ -48,6 +48,24 @@ public interface ShopBank {
      */
     PostResult post(UUID player, PayChoice choice, BigDecimal amount, boolean playerPaysShop);
 
+    /** Must mean reference-idempotent, durably committed before success; never silently fall back. */
+    default boolean supportsReferencedSettlement() { return false; }
+    default PostResult postReferenced(UUID player, PayChoice choice, BigDecimal amount,
+                                      boolean playerPaysShop, String reference) {
+        return PostResult.fail("bank_hook_missing");
+    }
+    /** Exact inverse of this reference, not a new opposite-direction trade. */
+    default PostResult rollback(String reference) { return PostResult.fail("bank_hook_missing"); }
+    /** Release pending settlement locks only after inventory delivery is durably proved. */
+    default PostResult completePayment(String reference) { return PostResult.fail("bank_hook_missing"); }
+    default String receiptStatus(String reference) { return "unknown"; }
+
+
+    /** Structured issuer-owned listed-note purchase quote. Null means unavailable, never guess. */
+    default com.google.gson.JsonObject quoteIssuerPayout(UUID personalId, BigDecimal centralBudget) { return null; }
+    default PostResult payIssuerOffer(UUID player, UUID personalId, BigDecimal centralBudget,
+                                      String fingerprint, String reference) { return PostResult.fail("bank_hook_missing"); }
+
     /** Null when no personal note has that name. */
     PersonalNoteRef findPersonal(String name);
 

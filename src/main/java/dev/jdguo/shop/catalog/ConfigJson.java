@@ -16,6 +16,7 @@ public final class ConfigJson {
     public static String write(ShopConfig config) {
         JsonObject root = new JsonObject();
         root.addProperty("stepFraction", plain(config.stepFraction()));
+        root.addProperty("spreadFraction", plain(config.spreadFraction()));
         root.addProperty("minDiamondPrice", plain(config.minDiamondPrice()));
         root.addProperty("maxCount", config.maxCount());
         root.addProperty("pageSize", config.pageSize());
@@ -37,6 +38,7 @@ public final class ConfigJson {
         BigDecimal step = root.has("stepFraction")
                 ? new BigDecimal(text(root.get("stepFraction")))
                 : defaults.stepFraction();
+        BigDecimal spread = root.has("spreadFraction") ? new BigDecimal(text(root.get("spreadFraction"))) : defaults.spreadFraction();
         BigDecimal floor = root.has("minDiamondPrice")
                 ? new BigDecimal(text(root.get("minDiamondPrice")))
                 : defaults.minDiamondPrice();
@@ -53,7 +55,7 @@ public final class ConfigJson {
             BigDecimal anchor = new BigDecimal(text(row.get("anchorDiamonds")));
             catalog.add(new CatalogEntry(item, name, anchor));
         }
-        ShopConfig config = new ShopConfig(step, floor, maxCount, pageSize, catalog);
+        ShopConfig config = new ShopConfig(step, floor, maxCount, pageSize, catalog, spread);
         config.validate();
         return config;
     }
@@ -77,6 +79,7 @@ public final class ConfigJson {
         StringBuilder out = new StringBuilder();
         out.append("{\n");
         out.append("  \"stepFraction\": \"").append(root.get("stepFraction").getAsString()).append("\",\n");
+        out.append("  \"spreadFraction\": \"").append(root.get("spreadFraction").getAsString()).append("\",\n");
         out.append("  \"minDiamondPrice\": \"").append(root.get("minDiamondPrice").getAsString()).append("\",\n");
         out.append("  \"maxCount\": ").append(root.get("maxCount").getAsInt()).append(",\n");
         out.append("  \"pageSize\": ").append(root.get("pageSize").getAsInt()).append(",\n");
