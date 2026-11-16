@@ -32,12 +32,23 @@ public final class ShopOutlets {
     private static final String TAG = "shopmod_outlet", KEY = "shopmod_outlet_name_", ROOT = "shopmod_counter_root", SIGN = "shopmod_counter_sign";
     private ShopOutlets() { }
     public static void register() {
-        CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> dispatcher.register(literal("shop")
-            .then(literal("ui").executes(ctx -> { ShopChestScreen.open(ctx.getSource().getPlayerOrThrow()); return 1; }))
-            .then(literal("outlet").requires(source -> source.hasPermissionLevel(2))
-                .then(literal("set").then(argument("name", StringArgumentType.word()).executes(ctx -> set(ctx.getSource(), StringArgumentType.getString(ctx,"name")))))
-                .then(literal("remove").then(argument("name", StringArgumentType.word()).executes(ctx -> remove(ctx.getSource(), StringArgumentType.getString(ctx,"name")))))
-                .then(literal("list").executes(ctx -> { for (ShopOutlet o : ShopOutletState.get(ctx.getSource().getServer()).all()) ctx.getSource().sendFeedback(() -> Text.literal(o.name()+" · "+o.dimension()+" "+o.x()+" "+o.y()+" "+o.z()), false); return 1; }))));
+        CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
+            var outlet = literal("outlet").requires(source -> source.hasPermissionLevel(2));
+            outlet.then(literal("set").then(argument("name", StringArgumentType.word())
+                    .executes(ctx -> set(ctx.getSource(), StringArgumentType.getString(ctx, "name")))));
+            outlet.then(literal("remove").then(argument("name", StringArgumentType.word())
+                    .executes(ctx -> remove(ctx.getSource(), StringArgumentType.getString(ctx, "name")))));
+            outlet.then(literal("list").executes(ctx -> {
+                for (ShopOutlet o : ShopOutletState.get(ctx.getSource().getServer()).all()) {
+                    ctx.getSource().sendFeedback(() -> Text.literal(o.name() + " · " + o.dimension() + " " + o.x() + " " + o.y() + " " + o.z()), false);
+                }
+                return 1;
+            }));
+            dispatcher.register(literal("shop").then(outlet).then(literal("ui").executes(ctx -> {
+                ShopChestScreen.open(ctx.getSource().getPlayerOrThrow());
+                return 1;
+            })));
+        });
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
             if (!(player instanceof ServerPlayerEntity serverPlayer) || hand != Hand.MAIN_HAND || player.isSpectator()) return ActionResult.PASS;
             for (ShopOutlet o : ShopOutletState.get(serverPlayer.getServer()).all()) {
