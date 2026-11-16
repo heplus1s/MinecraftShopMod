@@ -25,17 +25,21 @@ public final class MarketInfluence {
     }
 
     public static BigDecimal tradeQuote(String itemId, BigDecimal base, BigDecimal notesPerDiamond, boolean playerBuys) {
+        return tradeQuote(itemId, base, notesPerDiamond, playerBuys,
+                dev.jdguo.shop.catalog.ShopConfig.DEFAULT_SPREAD);
+    }
+
+    public static BigDecimal tradeQuote(String itemId, BigDecimal base, BigDecimal notesPerDiamond,
+                                        boolean playerBuys, BigDecimal spread) {
         BigDecimal center = adjusted(itemId, base, notesPerDiamond);
-        if (center == base) {
-            return base;
-        }
-        return MoneyScale.quantize(center.multiply(new BigDecimal(playerBuys ? "1.02" : "0.98")));
+        BigDecimal half = spread.divide(new BigDecimal("2"));
+        return center.multiply(playerBuys ? BigDecimal.ONE.add(half) : BigDecimal.ONE.subtract(half), PriceMath.MC);
     }
 
     static BigDecimal blend(BigDecimal base, BigDecimal market) {
         BigDecimal limit = base.multiply(new BigDecimal("0.05"));
         BigDecimal movement = market.subtract(base).multiply(new BigDecimal("0.20"));
-        return MoneyScale.quantize(base.add(movement.max(limit.negate()).min(limit)));
+        return base.add(movement.max(limit.negate()).min(limit));
     }
 
     private static Method marketReference() {

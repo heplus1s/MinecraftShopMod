@@ -34,15 +34,14 @@ public final class ShopWorldState extends PersistentState {
     public static ShopWorldState get(MinecraftServer server) {
         return server.getOverworld().getPersistentStateManager().getOrCreate(
                 ShopWorldState::fromNbt,
-                () -> new ShopWorldState(ShopSaved.empty()),
-                ID);
+                () -> new ShopWorldState(newestSaved(ShopSaved.empty())), ID);
     }
 
     public static ShopWorldState fromNbt(NbtCompound nbt) {
         String json = nbt.contains("json") ? nbt.getString("json") : "";
         if (!json.isBlank()) {
             try {
-                return new ShopWorldState(ShopSaved.parse(json));
+                return new ShopWorldState(newestSaved(ShopSaved.parse(json)));
             } catch (RuntimeException error) {
                 ShopRuntime.LOGGER.error("商店价格存档读不了，改读旁边的 JSON", error);
             }
@@ -61,6 +60,17 @@ public final class ShopWorldState extends PersistentState {
         return new ShopWorldState(ShopSaved.empty());
     }
 
+    private static ShopSaved newestSaved(ShopSaved nbt) {
+        Path path = backupPath(ShopRuntime.server);
+        if (path == null || !Files.exists(path)) return nbt;
+        try {
+            ShopSaved json = ShopSaved.parse(Files.readString(path));
+            return json.journalRevision() >= nbt.journalRevision() ? json : nbt;
+        } catch (IOException | RuntimeException error) {
+            throw new IllegalStateException("商店交易日志损坏，禁止静默回滚到旧 NBT", error);
+        }
+    }
+
     @Override
     public NbtCompound writeNbt(NbtCompound nbt) {
         nbt.putString("json", book.saved().toJson());
@@ -71,20 +81,39 @@ public final class ShopWorldState extends PersistentState {
 
     public void writeBackup() {
         Path path = backupPath(ShopRuntime.server);
-        if (path == null) {
-            return;
-        }
+        if (path == null) throw new IllegalStateException("商店存档路径不可用");
         try {
             Files.createDirectories(path.getParent());
             Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
-            Files.writeString(tmp, book.saved().toJson());
+            String document = book.saved().toJson();
+            Files.writeString(tmp, document);
+            try (var channel = java.nio.channels.FileChannel.open(tmp, java.nio.file.StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
             try {
                 Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
+                throw new IOException("Filesystem does not support atomic journal replacement", ignored);
+            }
+            if (!document.equals(Files.readString(path))) throw new IOException("Shop journal readback mismatch");
+            try (var directory = java.nio.channels.FileChannel.open(path.getParent(), java.nio.file.StandardOpenOption.READ)) {
+                directory.force(true);
+            } catch (UnsupportedOperationException unsupported) {
+                warnDirectorySync();
+            } catch (java.nio.file.AccessDeniedException denied) {
+                if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) throw denied;
+                warnDirectorySync();
             }
         } catch (IOException error) {
-            ShopRuntime.LOGGER.warn("写不了商店价格的旁边存档", error);
+            throw new IllegalStateException("商店交易日志未可靠保存", error);
+        }
+    }
+
+    private static boolean directorySyncWarning;
+    private static void warnDirectorySync() {
+        if (!directorySyncWarning) {
+            directorySyncWarning = true;
+            ShopRuntime.LOGGER.warn("平台不支持目录 fsync；已完成文件 force、原子替换和读回。断电时目录项持久性仍依赖操作系统保证。");
         }
     }
 

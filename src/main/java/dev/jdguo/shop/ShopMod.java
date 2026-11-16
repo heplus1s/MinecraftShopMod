@@ -38,6 +38,21 @@ public final class ShopMod implements ModInitializer {
                     ShopRuntime.config.catalog().size(),
                     ShopRuntime.state.book().storedCount());
         });
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            if (ShopRuntime.state == null) return;
+            var purse = new dev.jdguo.shop.inventory.PlayerPurse(handler.player);
+            for (String finished : ShopRuntime.state.book().saved().completedTrades(handler.player.getUuid())) {
+                purse.forgetReceipt(finished + "_give"); purse.forgetReceipt(finished + "_take"); purse.forgetReceipt(finished + "_undo");
+            }
+            String ref = ShopRuntime.state.book().saved().pendingTrade(handler.player.getUuid());
+            if (ref == null) return;
+            var result = dev.jdguo.shop.trade.TradeJournal.resume(ShopRuntime.session(),
+                    purse, handler.player.getUuid(), ref);
+            boolean done = ShopRuntime.state.book().saved().pendingTrade(handler.player.getUuid()) == null;
+            handler.player.sendMessage(net.minecraft.text.Text.literal(done
+                    ? "[商店] 上次中断订单已核对恢复，请检查库存及账目。"
+                    : "[商店] 上次订单尚待核对，请勿重复付款。订单：" + ref), false);
+        });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> ShopRuntime.save());
     }
 

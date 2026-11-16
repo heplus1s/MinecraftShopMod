@@ -38,11 +38,11 @@ class TradeDeskTest {
         ShopTradeResult result = TradeDesk.buy(session, purse, PLAYER, PayChoice.note(), DIAMOND, 1);
 
         assertTrue(result.success());
-        assertEquals(0, result.charge().compareTo(new BigDecimal("1.0000")));
-        assertEquals(0, bank.player("note").compareTo(new BigDecimal("99.0000")));
-        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("1.0000")));
+        assertEquals(0, result.charge().compareTo(new BigDecimal("1.0200")));
+        assertEquals(0, bank.player("note").compareTo(new BigDecimal("98.9800")));
+        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("1.0200")));
         assertEquals(1, purse.plainCount(DIAMOND));
-        assertEquals(1, saves.get());
+        assertTrue(saves.get() >= 2, "intent and completion must both persist");
         assertTrue(book.lookup(session.config(), DIAMOND).diamondEach().compareTo(BigDecimal.ONE) > 0);
         assertTrue(result.message().contains("钻石等值"));
         assertTrue(result.message().contains("银行券"));
@@ -55,10 +55,10 @@ class TradeDeskTest {
         ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
         ShopTradeResult result = TradeDesk.buy(session, new MapPurse(), PLAYER, PayChoice.note(), IRON, 1);
         assertTrue(result.success(), result.message());
-        assertEquals(0, result.charge().compareTo(new BigDecimal("0.0600")));
+        assertEquals(0, result.charge().compareTo(new BigDecimal("0.0612")));
         assertTrue(result.charge().compareTo(BigDecimal.ONE) < 0);
-        assertEquals(0, bank.player("note").compareTo(new BigDecimal("99.9400")));
-        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("0.0600")));
+        assertEquals(0, bank.player("note").compareTo(new BigDecimal("99.9388")));
+        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("0.0612")));
     }
 
     @Test
@@ -95,11 +95,11 @@ class TradeDeskTest {
         ShopTradeResult result = TradeDesk.buy(session, new MapPurse(), PLAYER, personal, DIAMOND, 1);
 
         assertTrue(result.success(), result.message());
-        assertEquals(0, result.charge().compareTo(new BigDecimal("2.0000")));
+        assertEquals(0, result.charge().compareTo(new BigDecimal("2.0400")));
         assertEquals(0, bank.player("note").compareTo(new BigDecimal("100.0000")));
         assertEquals(0, bank.shop("note").compareTo(BigDecimal.ZERO));
-        assertEquals(0, bank.player(personal.key()).compareTo(new BigDecimal("3.0000")));
-        assertEquals(0, bank.shop(personal.key()).compareTo(new BigDecimal("2.0000")));
+        assertEquals(0, bank.player(personal.key()).compareTo(new BigDecimal("2.9600")));
+        assertEquals(0, bank.shop(personal.key()).compareTo(new BigDecimal("2.0400")));
         assertTrue(result.message().contains("甲"));
         assertFalse(result.message().contains("铜锭"));
     }
@@ -129,9 +129,9 @@ class TradeDeskTest {
 
         assertTrue(result.success());
         assertEquals(0, purse.plainCount(DIAMOND));
-        assertEquals(0, bank.player("note").compareTo(new BigDecimal("108")));
-        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("2")));
-        assertEquals(0, book.lookup(session.config(), DIAMOND).diamondEach().compareTo(new BigDecimal("7.984")));
+        assertEquals(0, bank.player("note").compareTo(new BigDecimal("107.8243")));
+        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("2.1757")));
+        assertEquals(0, book.lookup(session.config(), DIAMOND).diamondEach().compareTo(new BigDecimal("8").divide(new BigDecimal("1.002"), PriceMath.MC)));
     }
 
     @Test
@@ -166,7 +166,7 @@ class TradeDeskTest {
         ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
         ShopQuoteView view = TradeDesk.quote(session, DIAMOND, 1, true, PayChoice.note());
         assertTrue(view.listed());
-        assertEquals(0, view.diamondEach().compareTo(BigDecimal.ONE));
+        assertEquals(0, view.diamondEach().compareTo(new BigDecimal("1.02")));
         assertNull(view.charge());
         assertTrue(view.message().contains("钻石等值"));
         assertTrue(view.message().contains("中央银行没有加载"));
@@ -214,7 +214,7 @@ class TradeDeskTest {
         assertEquals(0, bank.player("note").compareTo(new BigDecimal("100")));
         assertEquals(0, bank.shop("note").compareTo(BigDecimal.ZERO));
         assertEquals(0, purse.plainCount(DIAMOND));
-        assertEquals(0, saves.get());
+        assertTrue(saves.get() >= 2, "failed delivery must retain a cancelled audit record");
         assertEquals(0, book.lookup(session.config(), DIAMOND).diamondEach().compareTo(BigDecimal.ONE));
     }
 

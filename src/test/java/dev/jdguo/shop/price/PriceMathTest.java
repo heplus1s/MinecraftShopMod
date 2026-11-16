@@ -12,7 +12,7 @@ class PriceMathTest {
     private static final BigDecimal FLOOR = new BigDecimal("0.000000001");
 
     @Test
-    void eachBuyStepIsRoundedToFourDecimals() {
+    void curvePreservesPrecisionUntilSettlement() {
         PricePath path = PriceMath.buy(new BigDecimal("1"), new BigDecimal("0.1"), FLOOR, 3);
         assertEquals(0, path.total().compareTo(new BigDecimal("3.3100")));
         assertEquals(0, path.end().compareTo(new BigDecimal("1.331")));
@@ -47,6 +47,6 @@ class PriceMathTest {
     @Test
     void aFarPriceIsNotPulledBackToTheAnchor() {
         BigDecimal sold = PriceMath.sell(new BigDecimal("10"), STEP, FLOOR, 1).end();
-        assertEquals(0, sold.compareTo(new BigDecimal("9.9800")));
+        assertEquals(0, sold.compareTo(BigDecimal.TEN.divide(BigDecimal.ONE.add(STEP), PriceMath.MC)));
     }
 }

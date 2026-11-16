@@ -36,17 +36,25 @@ Without the bank, the shop still loads. Diamond-equivalent prices can be read. B
 
 成交时按中央银行当时的汇率，把钻石等值换成玩家选定的一种货币。玩家可以选银行券，也可以选一种个人银行券。一笔订单只用这一种，不找铜锭，也不找钻石。铜锭和钻石本身不能当货款。
 
-单价、这一笔的合计、记下的新价格，以及用来比较的余额，都算到小数点后四位。整数零显示成 `0`。不到一个银行券也可以买，只要选定货币的余额够付这四位小数。余额不够就整笔拒绝，不会只成交一部分。没有起点、也没有已经成交的价格时，显示「暂无牌价」，不会临时编一个价。
+内部价格曲线以 34 位有效数字保存，显示和支付余额为四位小数。每件物品先换算货币，玩家买入向上舍入、卖出向下舍入，再相加；拆成多笔不会减少相同成交序列的舍入费用。整数零显示成 `0`。不到一个银行券也可以买，只要选定货币的余额够付这四位小数。余额不够就整笔拒绝，不会只成交一部分。没有起点、也没有已经成交的价格时，显示「暂无牌价」，不会临时编一个价。
 
 每成交一个物品，价格按当前价格小幅移动。玩家购买，价格上升。玩家出售，价格下降。没有把价格拉回起点的力量。买卖多了，价格可以离起点很远，以便靠近游戏里真实的供求。
 
-一步的默认大小是 0.002，也就是当前价格的千分之二。一次购买多个时，价格沿着这一小步往上走，货款按走过的价格相加，再折成选定货币的四位小数。
+一步的默认大小是 0.002，也就是当前价格的千分之二。一次购买多个时，价格沿着这一小步往上走，购买先按当前档报价再乘以 1.002；出售先除以 1.002 返回上一档再报价。反向交易沿同一曲线，不再按上涨后的价格立即回购。
 
 Prices start from gathering difficulty relative to one diamond. That anchor is only the opening price. At the moment of a trade it is converted, at the bank's current rate, into the one currency the player selected: the central bank note, or one personal note. Copper and diamond are not payment currencies, and one order does not use a second currency.
 
-Unit prices, order totals, posted steps, and the balances compared for a trade are kept to four decimal places. Integer zero is shown as `0`. An order below one unit is allowed when the selected balance covers that four-decimal total. A short balance refuses the whole order. A missing anchor or live quote is shown as 暂无牌价 and is not replaced with a made-up price.
+Curve state keeps 34 significant digits across saves. Payable amounts use four decimals per item: ceiling for player buys and floor for player sells, then sum. This makes batch and split orders follow the same rounding. Integer zero is shown as `0`. An order below one unit is allowed when the selected balance covers that four-decimal total. A short balance refuses the whole order. A missing anchor or live quote is shown as 暂无牌价 and is not replaced with a made-up price.
 
 Each item in a trade takes one small step off the current price. Buying steps up. Selling steps down. Nothing pulls the price back to the anchor, so a long run of trades can travel far from the start. The default step is 0.002 of the current price.
+
+### 固定双向价差
+
+`config/shopmod.json` 的 `spreadFraction` 默认 `0.04`，可调整为 `0.0001` 至 `1`。定义为同一执行档位的 `(买价−卖价)/中心价`：4% 即买方支付中心价 ×1.02、卖方收到 ×0.98。该价差无论市场模组是否提供参考价都生效；不是只在有市场成交记录时才生效。不同方向的价格冲击、四位小数舍入可能扩大最终看到的差距，不会将其缩窄为负。
+
+旧配置没有该字段时采用 4%；保存配置或执行 `/shop admin spread 0.04` 后写入文件。旧存档价格保留为新的曲线起点，后续保存保留内部精度，不重置已交易价格。
+
+价差不是消除所有套利的保证：跨商品配方、外部市场操纵、不同货币实时汇率变化仍需独立风控。本修复保证同一报价来源和不变汇率下的即时往返不获利，且批量与拆单一致。
 
 ## 指令
 
@@ -80,6 +88,7 @@ Command words are English. Chat replies are Chinese.
 - `/shop currency personal <name>` 改用一种个人银行券结算。`<name>` 是这张券已登记的名字。
 - `/shop admin status` 查看步长、汇率、储蓄总池和商店经营账户是否已经接上。需要管理员。
 - `/shop admin reload` 重新读取配置。已经成交的价格还在。
+- `/shop admin spread <fraction>` 持久化买卖价差，例如 `0.04` 表示相对中心价 4%（买 +2%、卖 −2%）。
 - `/shop admin step <fraction>` 修改每成交一个物品的步长，例如 `0.002`。不能超过 `0.2`。
 - `/shop admin anchor <item> <diamonds>` 修改起点。已经成交过的价格不变。
 - `/shop admin reset <item>` 只清除这一种物品的成交价，让它回到当前起点。其它物品不动。
@@ -155,3 +164,13 @@ The license is MIT. Copyright heplus1s.
 升级时请移除旧 `shopmod-ui` 独立 JAR；同时安装会由 Fabric Loader 明确拒绝，以避免重复接收器、快捷键和类冲突。不要保留同一主模组的两个版本。只安装本地客户端不会改变远端服务器数据；不支持相关网络通道的服务器不会接收本 UI 操作。
 
 兼容性验收仍需分别执行：专用服务器+原版客户端、Fabric空客户端、完整客户端、单人世界切换远程服务器、旧 UI 包并存的拒绝提示、协议不匹配时的基础入口。构建通过不等同于实际联机验收。
+
+### 可靠结算与中断恢复
+
+商店要求新版银行引用接口 `transferReferenced / rollback / receiptStatus / durablePayments`。旧接口不再降级执行付款。每笔订单使用唯一引用：买货的个人币按银行实际抵押链即时清算；卖货按所选币种的真实可支付能力执行，不足时拒绝，玩家可重新选择央行券，商店不自动换币成交。交货明确失败时撤销同一引用，不把退款当成新的一笔卖货或反向发行。
+
+订单意图、银行状态和最终价格写入 `data/shopmod-prices.json` 的 `trades`；版本 2 与 `journalRevision` 防止恢复时较旧 NBT 覆盖已保存订单。JSON 使用临时文件、文件强制落盘、原子替换及完整读回；文件保存失败时停止交易，不吞掉错误。目录 fsync 若平台不支持，或 Windows 拒绝打开目录，则记录警告但不阻止交易；断电目录项持久性依赖操作系统，不承诺所有硬件故障下绝对耐久。库存交付不再把装不下的物品扔在地上，普通异常会恢复整份库存。
+
+服务器在修改库存后把订单标记放进原版玩家 `Tags`，与 `Inventory` 同一玩家 NBT 保存；读回标记并核实内存标记、强制文件落盘成功后才将订单完成。不要手动编辑 `shopmod_tx_` 标记或分别恢复银行/商店/玩家存档。当前实现调用 `saveAllPlayerData()`，每笔需要玩家文件 I/O，在线玩家很多时有性能成本。单机存档若玩家当前状态与玩家文件标记不一致，会停止自动恢复而不是猜测发货。
+
+正常订单完成后清理内存标记，在下一次保存随库存一起清理；重连时也只清理日志中已确认完成的旧标记。中断订单会核对银行回执与玩家标记，已给货不重复给、已扣款不重复扣。无法判明时锁定相关玩家和商品，显示订单号供管理员核对，不自动退款或重发。不确定状态仍可能需要人工处理；这不是把多个独立文件变成同一个数据库事务。

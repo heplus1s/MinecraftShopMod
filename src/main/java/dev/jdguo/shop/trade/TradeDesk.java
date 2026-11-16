@@ -40,6 +40,8 @@ public final class TradeDesk {
 
     public static ShopTradeResult buy(ShopSession session, ItemPurse purse, UUID player, PayChoice pay,
                                        String itemId, int count) {
+        ShopTradeResult recovery = recoverPending(session, purse, player);
+        if (recovery != null) return recovery;
         Prepared prepared = prepare(session, itemId, count, true, pay, true);
         if (prepared.tradeFailure != null) {
             return prepared.tradeFailure;
@@ -52,6 +54,8 @@ public final class TradeDesk {
 
     public static ShopTradeResult sell(ShopSession session, ItemPurse purse, UUID player, PayChoice pay,
                                         String itemId, int count) {
+        ShopTradeResult recovery = recoverPending(session, purse, player);
+        if (recovery != null) return recovery;
         Prepared prepared = prepare(session, itemId, count, false, pay, true);
         if (prepared.tradeFailure != null) {
             return prepared.tradeFailure;
@@ -61,6 +65,18 @@ public final class TradeDesk {
             return fail(prepared, "not_enough_items", ShopText.notEnoughItems(prepared.entry.name(), count, have));
         }
         return settle(session, purse, player, prepared, false);
+    }
+
+    private static ShopTradeResult recoverPending(ShopSession session, ItemPurse purse, UUID player) {
+        if (session.book() == null) return null;
+        String ref = session.book().saved().pendingTrade(player);
+        if (ref == null) return null;
+        TradeJournal.Result result = TradeJournal.resume(session, purse, player, ref);
+        boolean resolved = session.book().saved().pendingTrade(player) == null;
+        return new ShopTradeResult(false, resolved ? "previous_recovered" : "settlement_pending",
+                resolved ? "上一笔订单已核对恢复，请检查物品和余额后重新下单。"
+                         : "上一笔订单结果尚待核对，请勿重复付款。订单：" + ref,
+                "", "", 0, null, null, null, null);
     }
 
     public static List<ShopListingView> listings(ShopSession session, int page, PayChoice pay) {
@@ -104,37 +120,20 @@ public final class TradeDesk {
                 return fail(prepared, "insufficient_shop",
                         ShopText.insufficientShop(prepared.currency, due, shop));
             }
-            purse.takePlain(prepared.itemId, prepared.count);
         }
-        ShopBank.PostResult post = bank.post(player, prepared.pay, due, buying);
-        if (!post.success()) {
-            if (!buying) {
-                purse.give(prepared.itemId, prepared.count);
-            }
-            return failureFromPost(prepared, post);
+        TradeJournal.Result settled = TradeJournal.begin(session, purse, player, prepared.itemId, prepared.count,
+                buying, prepared.pay, due, prepared.basePrice, prepared.path.end());
+        if (!settled.success()) {
+            String message = switch (settled.code()) {
+                case "refunded" -> ShopText.refunded();
+                case "previous_recovered" -> "上一笔订单已恢复，请重新检查物品及余额后下单。";
+                case "bank_hook_missing" -> "当前银行或物品接口不支持可靠引用结算，交易未执行。";
+                case "settlement_pending" -> "该订单尚待恢复，已暂停相关玩家/商品交易。请勿重复付款；订单：" + settled.reference();
+                default -> "订单未完成：" + settled.code() + "；订单：" + settled.reference();
+            };
+            return fail(prepared, settled.code(), message);
         }
-        if (buying) {
-            try {
-                purse.give(prepared.itemId, prepared.count);
-            } catch (RuntimeException error) {
-                LOGGER.error("购入已入账，但物品没有交给玩家 {}", player, error);
-                ShopBank.PostResult back = bank.post(player, prepared.pay, due, false);
-                if (!back.success()) {
-                    LOGGER.error("货款退回失败，玩家 {} 代码 {}", player, back.code());
-                    return fail(prepared, "settle_inconsistent", ShopText.settleInconsistent());
-                }
-                return fail(prepared, "refunded", ShopText.refunded());
-            }
-        }
-        var config = session.config();
-        BigDecimal baseNext = (buying
-                ? PriceMath.buy(prepared.basePrice, config.stepFraction(), config.minDiamondPrice(), prepared.count)
-                : PriceMath.sell(prepared.basePrice, config.stepFraction(), config.minDiamondPrice(), prepared.count)).end();
-        session.book().commit(prepared.itemId, baseNext);
-        session.persist();
-        BigDecimal balance = post.playerBalance() != null
-                ? post.playerBalance()
-                : bank.playerBalance(player, prepared.pay);
+        BigDecimal balance = bank.playerBalance(player, prepared.pay);
         String message = buying
                 ? ShopText.bought(prepared.entry.name(), prepared.count, prepared.currency, due,
                 prepared.path.end(), prepared.entry.anchorDiamonds(), balance)
@@ -173,11 +172,6 @@ public final class TradeDesk {
         prepared.entry = entry;
         PriceBook.Lookup lookup = session.book().lookup(config, prepared.itemId);
         prepared.basePrice = lookup.diamondEach();
-        if (MoneyScale.positive(prepared.basePrice)) {
-            lookup = new PriceBook.Lookup(entry,
-                    MarketInfluence.tradeQuote(prepared.itemId, prepared.basePrice, rate(bank, PayChoice.note()), buying),
-                    lookup.corrupt());
-        }
         prepared.lookup = lookup;
         if (!MoneyScale.positive(lookup.diamondEach())) {
             return stop(prepared, "no_quote", ShopText.noQuote(), forTrade);
@@ -187,14 +181,17 @@ public final class TradeDesk {
         if (forTrade && gate != null) {
             return stop(prepared, gate, gateMessage(gate), true);
         }
-        prepared.path = buying
-                ? PriceMath.buy(lookup.diamondEach(), config.stepFraction(), config.minDiamondPrice(), count)
-                : PriceMath.sell(lookup.diamondEach(), config.stepFraction(), config.minDiamondPrice(), count);
-        if (!MoneyScale.positive(prepared.path.total())) {
+        BigDecimal rate = rate(bank, prepared.pay);
+        BigDecimal referenceRate = rate(bank, PayChoice.note());
+        PriceMath.Execution execution = PriceMath.execution(prepared.basePrice,
+                config.stepFraction(), config.minDiamondPrice(), count, buying, config.spreadFraction(),
+                base -> MarketInfluence.adjusted(prepared.itemId, base, referenceRate), rate);
+        prepared.path = execution.path();
+        prepared.lookup = new PriceBook.Lookup(entry, execution.first(), lookup.corrupt());
+        prepared.charge = execution.charge();
+        if (prepared.path.total().signum() <= 0) {
             return stop(prepared, "no_quote", ShopText.noQuote(), forTrade);
         }
-        BigDecimal rate = rate(bank, prepared.pay);
-        prepared.charge = PriceMath.charge(prepared.path.total(), rate);
         if (forTrade && !MoneyScale.positive(prepared.charge)) {
             return stop(prepared, "zero_charge", ShopText.zeroCharge(), true);
         }

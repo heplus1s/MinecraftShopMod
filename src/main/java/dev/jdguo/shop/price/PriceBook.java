@@ -35,12 +35,12 @@ public final class PriceBook {
             return new Lookup(entry, null, true);
         }
         if (read.present()) {
-            return new Lookup(entry, MoneyScale.quantize(read.value()), false);
+            return new Lookup(entry, PriceMath.normalize(read.value()), false);
         }
         if (entry == null || !MoneyScale.positive(entry.anchorDiamonds())) {
             return new Lookup(entry, null, false);
         }
-        return new Lookup(entry, MoneyScale.quantize(entry.anchorDiamonds()), false);
+        return new Lookup(entry, PriceMath.normalize(entry.anchorDiamonds()), false);
     }
 
     public PayChoice payer(UUID player) {

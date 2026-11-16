@@ -13,6 +13,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.Identifier;
+import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
@@ -26,10 +27,16 @@ public final class ShopUiClient implements ClientModInitializer {
 
     private static JsonObject pending = new JsonObject();
     private static KeyBinding openKey;
+    private static boolean openRequested;
+    private static int awaitingOpen;
 
     @Override
     public void onInitializeClient() {
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> pending = new JsonObject());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            pending = new JsonObject();
+            openRequested = false;
+            awaitingOpen = 0;
+        });
         openKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.shopmod-ui.open", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "category.shopmod-ui"));
         ClientPlayNetworking.registerGlobalReceiver(SYNC, (client, handler, buf, response) -> {
@@ -43,13 +50,18 @@ public final class ShopUiClient implements ClientModInitializer {
             ClientPlayNetworking.send(HELLO, buf);
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (openKey.wasPressed()) {
+            while (openKey.wasPressed()) openRequested = true;
+            // A command executes inside ChatScreen.keyPressed. Open only after it has closed.
+            if (openRequested) {
+                openRequested = false;
                 present(client);
+            } else if (awaitingOpen > 0 && --awaitingOpen == 0) {
+                inform(client, "商店界面未收到服务器响应，请检查两端模组版本；可尝试 /shop ui。");
             }
         });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
                 dispatcher.register(literal("shopui").executes(context -> {
-                    MinecraftClient.getInstance().execute(() -> present(MinecraftClient.getInstance()));
+                    openRequested = true;
                     return 1;
                 })));
     }
@@ -77,23 +89,38 @@ public final class ShopUiClient implements ClientModInitializer {
     }
 
     private static void receive(MinecraftClient client, String json) {
-        JsonObject data = JsonParser.parseString(json).getAsJsonObject();
+        JsonObject data;
+        try {
+            data = JsonParser.parseString(json).getAsJsonObject();
+        } catch (RuntimeException malformed) {
+            return;
+        }
         pending = data;
         if (client.currentScreen instanceof ShopScreen screen) {
             screen.show(data);
+            awaitingOpen = 0;
             return;
         }
-        if (ShopQuotes.shouldPresent(data)) {
+        if (awaitingOpen > 0 || ShopQuotes.shouldPresent(data)) {
+            awaitingOpen = 0;
             client.setScreen(new ShopScreen(data));
         }
     }
 
     private static void present(MinecraftClient client) {
-        if (client.player == null || !ClientPlayNetworking.canSend(ACTION)) return;
-        if (client.currentScreen instanceof ShopScreen) {
+        if (client.player == null) return;
+        if (!ClientPlayNetworking.canSend(HELLO) || !ClientPlayNetworking.canSend(ACTION)) {
+            inform(client, "服务器未提供商店界面接口，请检查服务端 shopmod；原版菜单使用 /shop ui。");
             return;
         }
-        client.setScreen(new ShopScreen(pending));
-        sendList();
+        // Re-negotiate every open: JOIN may have run before channel registration arrived.
+        awaitingOpen = 100;
+        var buf = PacketByteBufs.create();
+        buf.writeVarInt(PROTOCOL);
+        ClientPlayNetworking.send(HELLO, buf);
+    }
+
+    private static void inform(MinecraftClient client, String message) {
+        if (client.player != null) client.player.sendMessage(Text.literal(message), false);
     }
 }

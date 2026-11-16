@@ -22,6 +22,10 @@ public final class MemoryBank implements ShopBank {
     public boolean hook = true;
     public BigDecimal interest = new BigDecimal("0.02");
     public boolean hideShopBalance;
+    public boolean rejectReferenced;
+    public boolean unknownAfterPostOnce;
+    public int referencedCalls;
+    public int rollbackCalls;
 
     public MemoryBank() {
         player.put("note", new BigDecimal("100"));
@@ -74,6 +78,42 @@ public final class MemoryBank implements ShopBank {
             return null;
         }
         return shop(choice.key());
+    }
+
+    private record Receipt(UUID player, PayChoice choice, BigDecimal amount, boolean buying, boolean rolledBack) {}
+    private final Map<String, Receipt> receipts = new HashMap<>();
+    @Override public boolean supportsReferencedSettlement() { return true; }
+    @Override public String receiptStatus(String reference) {
+        Receipt r = receipts.get(reference);
+        return r == null ? "none" : r.rolledBack() ? "rolled_back" : "applied";
+    }
+    @Override public PostResult postReferenced(UUID playerId, PayChoice choice, BigDecimal amount, boolean buying, String reference) {
+        referencedCalls++;
+        if (rejectReferenced) return PostResult.fail("bank_rejected");
+        Receipt old = receipts.get(reference);
+        if (old != null) {
+            if (!old.player().equals(playerId) || !old.choice().equals(choice) || old.amount().compareTo(amount) != 0 || old.buying() != buying)
+                return PostResult.fail("reference_conflict");
+            return old.rolledBack() ? PostResult.fail("rolled_back") : PostResult.ok(player(choice.key()), shop(choice.key()));
+        }
+        PostResult result = post(playerId, choice, amount, buying);
+        if (result.success()) receipts.put(reference, new Receipt(playerId, choice, amount, buying, false));
+        if (result.success() && unknownAfterPostOnce) {
+            unknownAfterPostOnce = false;
+            return PostResult.fail("settlement_unknown");
+        }
+        return result;
+    }
+    @Override public PostResult rollback(String reference) {
+        rollbackCalls++;
+        Receipt r = receipts.get(reference);
+        if (r == null) return PostResult.fail("none");
+        if (r.rolledBack()) return PostResult.ok(null, null);
+        BigDecimal delta = r.buying() ? r.amount() : r.amount().negate();
+        player.put(r.choice().key(), player(r.choice().key()).add(delta));
+        shop.put(r.choice().key(), shop(r.choice().key()).subtract(delta));
+        receipts.put(reference, new Receipt(r.player(), r.choice(), r.amount(), r.buying(), true));
+        return PostResult.ok(player(r.choice().key()), shop(r.choice().key()));
     }
 
     @Override

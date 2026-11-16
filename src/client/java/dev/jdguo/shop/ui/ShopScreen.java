@@ -133,6 +133,7 @@ public final class ShopScreen extends Screen {
             addDrawableChild(ButtonWidget.builder(Text.literal("买入"), button -> trade(true, itemId, field))
                     .dimensions(cellX + 46, cellY + 48, 36, 18).build());
             addDrawableChild(ButtonWidget.builder(Text.literal("卖出"), button -> trade(false, itemId, field))
+                    .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("出售以所选货币收款；实际清算资产不足时拒绝")))
                     .dimensions(cellX + 86, cellY + 48, 36, 18).build());
         }
     }

@@ -74,7 +74,7 @@ public final class FabricBankBridge implements ShopBank {
 
     @Override
     public boolean operatingAccountReady() {
-        return account() != null && decimalTransferPresent();
+        return account() != null && supportsReferencedSettlement();
     }
 
     @Override
@@ -203,42 +203,61 @@ public final class FabricBankBridge implements ShopBank {
 
     @Override
     public PostResult post(UUID player, PayChoice choice, BigDecimal amount, boolean playerPaysShop) {
-        if (choice == null || choice.hard()) {
-            return PostResult.fail("hard_currency");
-        }
-        if (!ledgerReady()) {
-            return PostResult.fail("bank_not_ready");
-        }
-        if (!decimalTransferPresent()) {
-            return PostResult.fail("bank_hook_missing");
-        }
+        // Compatibility entrypoint still uses the durable implementation, never the legacy transfer.
+        return postReferenced(player, choice, amount, playerPaysShop, "shop_direct_" + UUID.randomUUID());
+    }
+
+    @Override
+    public boolean supportsReferencedSettlement() {
         Object account = account();
-        if (account == null) {
-            return PostResult.fail("bank_not_ready");
-        }
-        BigDecimal due = MoneyScale.quantize(amount);
-        if (!MoneyScale.positive(due)) {
-            return PostResult.fail("bank_rejected");
-        }
+        if (account == null) return false;
         try {
-            Object result = account.getClass()
-                    .getMethod("transfer", UUID.class, String.class, BigDecimal.class, boolean.class)
-                    .invoke(account, player, choice.key(), due, playerPaysShop);
+            account.getClass().getMethod("transferReferenced", UUID.class, String.class,
+                    BigDecimal.class, boolean.class, String.class);
+            account.getClass().getMethod("rollback", String.class);
+            account.getClass().getMethod("receiptStatus", String.class);
+            return Boolean.TRUE.equals(account.getClass().getMethod("durablePayments").invoke(account));
+        } catch (ReflectiveOperationException error) { return false; }
+    }
+
+    @Override
+    public PostResult postReferenced(UUID player, PayChoice choice, BigDecimal amount,
+                                      boolean playerPaysShop, String reference) {
+        if (choice == null || choice.hard()) return PostResult.fail("hard_currency");
+        Object account = account();
+        if (account == null || !supportsReferencedSettlement()) return PostResult.fail("bank_hook_missing");
+        try {
+            Object result = account.getClass().getMethod("transferReferenced", UUID.class, String.class,
+                    BigDecimal.class, boolean.class, String.class)
+                    .invoke(account, player, choice.key(), MoneyScale.quantize(amount), playerPaysShop, reference);
             String code = failureCode(result);
-            if (code != null) {
-                ShopRuntime.LOGGER.info("商店结算被拒绝：{}", code);
-                return PostResult.fail(normalize(code), playerBalance(player, choice), operatingBalance(choice));
-            }
-            try {
-                BankRuntime.save();
-            } catch (Throwable error) {
-                ShopRuntime.LOGGER.warn("商店结算已经入账，但中央银行存档没有立即写下", error);
-            }
-            return PostResult.ok(playerBalance(player, choice), operatingBalance(choice));
+            return code == null ? PostResult.ok(playerBalance(player, choice), operatingBalance(choice))
+                    : PostResult.fail(code, playerBalance(player, choice), operatingBalance(choice));
         } catch (Throwable error) {
-            ShopRuntime.LOGGER.error("商店结算调用失败。按约定，失败时中央银行不应改动余额。", error);
-            return PostResult.fail("bank_rejected");
+            ShopRuntime.LOGGER.error("商店引用结算结果不明，禁止自动重发或反向退款：{}", reference, error);
+            return PostResult.fail("settlement_unknown");
         }
+    }
+
+    @Override
+    public PostResult rollback(String reference) {
+        Object account = account();
+        if (account == null || !supportsReferencedSettlement()) return PostResult.fail("bank_hook_missing");
+        try {
+            Object result = account.getClass().getMethod("rollback", String.class).invoke(account, reference);
+            String code = failureCode(result);
+            return code == null ? PostResult.ok(null, null) : PostResult.fail(code);
+        } catch (Throwable error) {
+            ShopRuntime.LOGGER.error("商店结算回滚结果不明：{}", reference, error);
+            return PostResult.fail("settlement_unknown");
+        }
+    }
+
+    @Override
+    public String receiptStatus(String reference) {
+        Object account = account();
+        String status = account == null ? null : invoke(account, "receiptStatus", new Class<?>[]{String.class}, reference);
+        return status == null ? "unknown" : status;
     }
 
     @Override

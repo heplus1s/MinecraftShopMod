@@ -37,7 +37,10 @@ public final class ShopUiSnapshot {
                 && ShopRuntime.bank.unitsPerDiamond(pay) != null);
         root.addProperty("currency", pay.name());
         root.addProperty("currencyKey", pay.key());
+        root.addProperty("sellCurrency", pay.name());
+        root.addProperty("sellCurrencyKey", pay.key());
         root.addProperty("step", MoneyScale.display(ShopRuntime.config.stepFraction()));
+        root.addProperty("spread", MoneyScale.display(ShopRuntime.config.spreadFraction()));
         root.addProperty("page", shown);
         root.addProperty("pages", pages);
         root.addProperty("message", message == null || message.isBlank() ? "" : "[商店] " + message);

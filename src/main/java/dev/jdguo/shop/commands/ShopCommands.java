@@ -87,6 +87,9 @@ public final class ShopCommands {
                                 .executes(ctx -> info(ctx.getSource(), ShopText.adminHelp()))
                                 .then(literal("status").executes(ctx -> status(ctx.getSource())))
                                 .then(literal("reload").executes(ctx -> reload(ctx.getSource())))
+                                .then(literal("spread")
+                                        .then(argument("fraction", StringArgumentType.word())
+                                                .executes(ctx -> spread(ctx.getSource(), StringArgumentType.getString(ctx, "fraction")))))
                                 .then(literal("step")
                                         .then(argument("fraction", StringArgumentType.word())
                                                 .executes(ctx -> step(ctx.getSource(), StringArgumentType.getString(ctx, "fraction")))))
@@ -199,6 +202,23 @@ public final class ShopCommands {
         } catch (IOException | RuntimeException error) {
             ShopRuntime.LOGGER.error("商店配置读不了", error);
             return problem(source, ShopText.reloadFailed());
+        }
+    }
+
+    private static int spread(ServerCommandSource source, String raw) {
+        BigDecimal spread = decimal(raw);
+        if (spread == null) return problem(source, ShopText.badDecimal());
+        try {
+            ShopConfig next = ShopRuntime.config.withSpread(spread);
+            ConfigStore.write(next);
+            ShopRuntime.config = next;
+            return info(source, "买卖价差已设为中心价的 " + spread.multiply(new BigDecimal("100")).stripTrailingZeros().toPlainString()
+                    + "%（买价加一半，卖价减一半；数量冲击和舍入另计）。");
+        } catch (IllegalArgumentException error) {
+            return problem(source, "价差比例必须在 0.0001 到 1 之间，例如 0.04 表示 4%。");
+        } catch (IOException error) {
+            ShopRuntime.LOGGER.error("商店价差配置写不了", error);
+            return problem(source, "配置没有保存，价差保持原值。");
         }
     }
 

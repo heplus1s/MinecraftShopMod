@@ -48,6 +48,17 @@ public interface ShopBank {
      */
     PostResult post(UUID player, PayChoice choice, BigDecimal amount, boolean playerPaysShop);
 
+    /** Must mean reference-idempotent, durably committed before success; never silently fall back. */
+    default boolean supportsReferencedSettlement() { return false; }
+    default PostResult postReferenced(UUID player, PayChoice choice, BigDecimal amount,
+                                      boolean playerPaysShop, String reference) {
+        return PostResult.fail("bank_hook_missing");
+    }
+    /** Exact inverse of this reference, not a new opposite-direction trade. */
+    default PostResult rollback(String reference) { return PostResult.fail("bank_hook_missing"); }
+    default String receiptStatus(String reference) { return "unknown"; }
+
+
     /** Null when no personal note has that name. */
     PersonalNoteRef findPersonal(String name);
 

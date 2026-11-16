@@ -11,6 +11,8 @@ import java.util.Map;
  * Changing an anchor does not move a price that has already traded.
  */
 public final class ShopConfig {
+    public static final BigDecimal DEFAULT_SPREAD = new BigDecimal("0.04");
+    private final BigDecimal spreadFraction;
     private final BigDecimal stepFraction;
     private final BigDecimal minDiamondPrice;
     private final int maxCount;
@@ -20,6 +22,12 @@ public final class ShopConfig {
 
     public ShopConfig(BigDecimal stepFraction, BigDecimal minDiamondPrice, int maxCount, int pageSize,
                       List<CatalogEntry> catalog) {
+        this(stepFraction, minDiamondPrice, maxCount, pageSize, catalog, DEFAULT_SPREAD);
+    }
+
+    public ShopConfig(BigDecimal stepFraction, BigDecimal minDiamondPrice, int maxCount, int pageSize,
+                      List<CatalogEntry> catalog, BigDecimal spreadFraction) {
+        this.spreadFraction = spreadFraction;
         this.stepFraction = stepFraction;
         this.minDiamondPrice = minDiamondPrice;
         this.maxCount = maxCount;
@@ -37,6 +45,10 @@ public final class ShopConfig {
     }
 
     public void validate() {
+        if (spreadFraction == null || spreadFraction.compareTo(new BigDecimal("0.0001")) < 0
+                || spreadFraction.compareTo(BigDecimal.ONE) > 0) {
+            throw new IllegalArgumentException("spreadFraction must be from 0.0001 to 1");
+        }
         if (stepFraction == null || stepFraction.signum() <= 0 || stepFraction.compareTo(new BigDecimal("0.2")) > 0) {
             throw new IllegalArgumentException("stepFraction must be greater than 0 and at most 0.2");
         }
@@ -69,7 +81,7 @@ public final class ShopConfig {
     }
 
     public ShopConfig withStep(BigDecimal step) {
-        ShopConfig next = new ShopConfig(step, minDiamondPrice, maxCount, pageSize, catalog);
+        ShopConfig next = new ShopConfig(step, minDiamondPrice, maxCount, pageSize, catalog, spreadFraction);
         next.validate();
         return next;
     }
@@ -88,11 +100,18 @@ public final class ShopConfig {
         if (!found) {
             throw new IllegalArgumentException("Unknown item: " + itemId);
         }
-        ShopConfig config = new ShopConfig(stepFraction, minDiamondPrice, maxCount, pageSize, next);
+        ShopConfig config = new ShopConfig(stepFraction, minDiamondPrice, maxCount, pageSize, next, spreadFraction);
         config.validate();
         return config;
     }
 
+    public ShopConfig withSpread(BigDecimal spread) {
+        ShopConfig next = new ShopConfig(stepFraction, minDiamondPrice, maxCount, pageSize, catalog, spread);
+        next.validate();
+        return next;
+    }
+
+    public BigDecimal spreadFraction() { return spreadFraction; }
     public BigDecimal stepFraction() { return stepFraction; }
     public BigDecimal minDiamondPrice() { return minDiamondPrice; }
     public int maxCount() { return maxCount; }
