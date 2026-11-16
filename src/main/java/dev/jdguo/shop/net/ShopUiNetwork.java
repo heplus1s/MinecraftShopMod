@@ -68,7 +68,10 @@ public final class ShopUiNetwork {
             }
             server.execute(() -> handle(player, action, itemId, count, page, currency));
         });
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> sessions.remove(handler.player.getUuid()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            sessions.remove(handler.player.getUuid());
+            dev.jdguo.shop.ui.ShopPayoutPreviews.cancel(handler.player.getUuid());
+        });
     }
 
     private static void handle(ServerPlayerEntity player, String action, String itemId, int count, int page, String currency) {
@@ -76,6 +79,14 @@ public final class ShopUiNetwork {
             return;
         }
         int shownPage = page < 1 ? 1 : page;
+        if("payout_confirm".equals(action)) {
+            var reply=ShopChestUiHooks.confirmPayout(player,itemId);
+            sync(player,shownPage,reply.result().message(),reply.replacement());return;
+        }
+        if("payout_cancel".equals(action)) {
+            dev.jdguo.shop.ui.ShopPayoutPreviews.cancel(player.getUuid());
+            sync(player,shownPage,"已取消组合付款预览，未执行交易。");return;
+        }
         PayChoice pay = currency == null ? ShopChestUiHooks.payer(player) : currency(currency);
         if (pay == null) {
             sync(player, shownPage, "所选币种不可用，本次没有结算。");
@@ -92,6 +103,11 @@ public final class ShopUiNetwork {
                 sync(player, shownPage, result.message());
             }
             case "sell" -> {
+                if(pay.personal()) {
+                    var preview=ShopChestUiHooks.previewPayout(player,itemId,count,pay);
+                    sync(player,shownPage,preview==null?"暂无可执行组合报价，请检查央行券资金或发行人挂单。":"请核对组合收款，确认后才收取商品。",preview);
+                    break;
+                }
                 ShopTradeResult result = ShopChestUiHooks.sell(player, itemId, count, pay);
                 sync(player, shownPage, result.message());
             }
@@ -116,11 +132,17 @@ public final class ShopUiNetwork {
     }
 
     private static void sync(ServerPlayerEntity player, int page, String message) {
+        sync(player,page,message,null);
+    }
+    private static void sync(ServerPlayerEntity player, int page, String message, dev.jdguo.shop.ui.ShopPayoutPreviews.Preview preview) {
         if (!ServerPlayNetworking.canSend(player, SYNC)) {
             return;
         }
         PacketByteBuf buf = PacketByteBufs.create();
-        String json = ShopUiSnapshot.json(player, page, message);
+        com.google.gson.JsonObject snapshot=com.google.gson.JsonParser.parseString(ShopUiSnapshot.json(player,page,message)).getAsJsonObject();
+        snapshot.addProperty("issuerPayoutPreview",true);
+        if(preview!=null)snapshot.add("payoutPreview",preview.json());
+        String json = snapshot.toString();
         if (json.length() > 32000) {
             json = "{\"protocol\":1,\"message\":\"[商店] 目录太长，请用指令查询。\",\"listings\":[]}";
         }

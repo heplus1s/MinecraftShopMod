@@ -153,6 +153,11 @@ public final class ShopScreen extends Screen {
             notice = "请填写购买或出售的数量。";
             return;
         }
+        if(!buy && currencyId.startsWith("personal:")
+                && !"true".equals(ShopQuotes.text(data,"issuerPayoutPreview"))) {
+            notice="服务器未提供组合收款确认，请升级服务端；本次未执行。";
+            return;
+        }
         boolean explicitCurrency = "true".equals(ShopQuotes.text(data, "explicitCurrency"));
         if (!explicitCurrency && !ShopQuotes.serverCurrency(data, currencyId)) {
             notice = "服务器需要升级商店模组，才能使用所选币种。";

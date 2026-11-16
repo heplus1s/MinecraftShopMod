@@ -67,18 +67,14 @@ class TradeJournalTest {
         assertTrue(TradeJournal.resume(restored, purse, player, ref).success());
         assertEquals(1, purse.plainCount(item)); assertEquals(1, bank.referencedCalls);
     }
-    @Test void saleHonorsChosenCurrencyAndRequiresReportedCapacity() {
+    @Test void privateSaleRequiresNewCompositionConfirmationInsteadOfLegacyPayment() {
         var personal = PayChoice.personal(UUID.randomUUID(), "私币");
         bank.rates.put(personal.key(), new BigDecimal("9"));
         bank.shop.put("note", new BigDecimal("1000"));
-        purse.items.put(item, 1);
-        var session = session(() -> {});
-        assertEquals("insufficient_shop", TradeDesk.sell(session, purse, player, personal, item, 1).code());
-        assertEquals(1, purse.plainCount(item));
         bank.shop.put(personal.key(), BigDecimal.TEN);
-        assertTrue(TradeDesk.sell(session, purse, player, personal, item, 1).success());
-        same("1000", bank.shop("note")); same("100", bank.player("note"));
-        assertTrue(bank.player(personal.key()).signum() > 0);
+        purse.items.put(item, 1);
+        assertEquals("payout_confirmation_required",TradeDesk.sell(session(() -> {}),purse,player,personal,item,1).code());
+        assertEquals(1,purse.plainCount(item)); assertEquals(0,bank.referencedCalls);
     }
     @Test void rejectedSaleRestoresItemsOnce() {
         bank.shop.put("note", BigDecimal.TEN); bank.rejectReferenced = true;

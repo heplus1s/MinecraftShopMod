@@ -12,11 +12,11 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * World price document. Version 1 stores each live diamond-equivalent under {@code prices}.
+ * World price document. Version 3 adds typed issuer-payout plans; older pending rows retain their original semantics.
  * Unknown keys are written back. A newer version is refused so an older build cannot blank the save.
  */
 public final class ShopSaved {
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
@@ -71,6 +71,13 @@ public final class ShopSaved {
         row.addProperty("createdAt", System.currentTimeMillis());
         trades().add(reference, row);
         tradeState(reference, "prepared");
+    }
+    public void beginIssuerPayout(String reference, UUID player, dev.jdguo.shop.trade.PrivatePayoutPlan plan) {
+        beginTrade(reference, player, plan.itemId(), plan.count(), false, plan.currency().key(),
+                plan.centralBudget(), plan.priceBefore(), plan.priceAfter());
+        JsonObject row = trades().getAsJsonObject(reference);
+        row.addProperty("kind", "issuer_offer_payout");
+        row.add("payoutPlan", plan.toJson());
     }
     public void tradeState(String reference, String state) {
         JsonObject row = trades().getAsJsonObject(reference);

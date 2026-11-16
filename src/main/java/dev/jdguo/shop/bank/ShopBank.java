@@ -61,6 +61,11 @@ public interface ShopBank {
     default String receiptStatus(String reference) { return "unknown"; }
 
 
+    /** Structured issuer-owned listed-note purchase quote. Null means unavailable, never guess. */
+    default com.google.gson.JsonObject quoteIssuerPayout(UUID personalId, BigDecimal centralBudget) { return null; }
+    default PostResult payIssuerOffer(UUID player, UUID personalId, BigDecimal centralBudget,
+                                      String fingerprint, String reference) { return PostResult.fail("bank_hook_missing"); }
+
     /** Null when no personal note has that name. */
     PersonalNoteRef findPersonal(String name);
 

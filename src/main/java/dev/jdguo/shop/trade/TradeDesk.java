@@ -56,6 +56,9 @@ public final class TradeDesk {
                                         String itemId, int count) {
         ShopTradeResult recovery = recoverPending(session, purse, player);
         if (recovery != null) return recovery;
+        if (pay != null && pay.personal()) {
+            return ShopTradeResult.fail("payout_confirmation_required", "个人币收款需要先预览并确认私币与央行券的组合，尚未收取物品。");
+        }
         Prepared prepared = prepare(session, itemId, count, false, pay, true);
         if (prepared.tradeFailure != null) {
             return prepared.tradeFailure;
@@ -65,6 +68,32 @@ public final class TradeDesk {
             return fail(prepared, "not_enough_items", ShopText.notEnoughItems(prepared.entry.name(), count, have));
         }
         return settle(session, purse, player, prepared, false);
+    }
+
+    public static PrivatePayoutPlan quotePrivatePayout(ShopSession session, String itemId, int count, PayChoice pay) {
+        if (pay == null || !pay.personal()) return null;
+        Prepared base = prepare(session, itemId, count, false, PayChoice.note(), false);
+        if (base.early != null || base.charge == null || base.charge.signum() <= 0 || !"ready".equals(base.settlementCode)) return null;
+        BigDecimal available = session.bank().operatingBalance(PayChoice.note());
+        if (available == null || available.compareTo(base.charge) < 0) return null;
+        com.google.gson.JsonObject quote = session.bank().quoteIssuerPayout(pay.personalId(), base.charge);
+        if (quote == null || !quote.has("success") || !quote.get("success").getAsBoolean()) return null;
+        for (String field : List.of("fingerprint", "privateAmount", "issuerProceeds", "centralRemainder", "unitPrice"))
+            if (!quote.has(field) || quote.get(field).isJsonNull()) return null;
+        return new PrivatePayoutPlan(itemId, base.entry.name(), count, pay, base.charge, base.basePrice, base.path.end(), quote.toString());
+    }
+
+    public static ShopTradeResult sellConfirmed(ShopSession session, ItemPurse purse, UUID player, PrivatePayoutPlan plan) {
+        ShopTradeResult recovery = recoverPending(session, purse, player);
+        if (recovery != null) return recovery;
+        PrivatePayoutPlan current = quotePrivatePayout(session, plan.itemId(), plan.count(), plan.currency());
+        if (!plan.same(current)) return ShopTradeResult.fail("payout_quote_changed", "报价或付款组合已经变化，请重新预览确认。");
+        if (purse.plainCount(plan.itemId()) < plan.count())
+            return ShopTradeResult.fail("not_enough_items", "可出售物品不足，尚未结算。");
+        TradeJournal.Result result = TradeJournal.beginIssuerPayout(session, purse, player, plan);
+        return new ShopTradeResult(result.success(), result.code(), result.success() ? "出售完成。" + plan.description()
+                : "订单未完成：" + result.code() + "；订单：" + result.reference(), plan.itemId(), plan.itemName(), plan.count(),
+                plan.priceBefore(), null, result.success() ? plan.priceAfter() : null, plan.centralBudget());
     }
 
     private static ShopTradeResult recoverPending(ShopSession session, ItemPurse purse, UUID player) {

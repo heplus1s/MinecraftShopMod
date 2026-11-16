@@ -276,6 +276,32 @@ public final class FabricBankBridge implements ShopBank {
     }
 
     @Override
+    public com.google.gson.JsonObject quoteIssuerPayout(UUID coin, BigDecimal budget) {
+        Object account = account();
+        if (account == null) return null;
+        try {
+            Object result = account.getClass().getMethod("quoteIssuerPayout", UUID.class, BigDecimal.class)
+                    .invoke(account, coin, budget);
+            return result instanceof String json ? com.google.gson.JsonParser.parseString(json).getAsJsonObject() : null;
+        } catch (Throwable unavailable) { return null; }
+    }
+
+    @Override
+    public PostResult payIssuerOffer(UUID player, UUID coin, BigDecimal budget, String fingerprint, String reference) {
+        Object account = account();
+        if (account == null || !supportsReferencedSettlement()) return PostResult.fail("bank_hook_missing");
+        try {
+            Object result = account.getClass().getMethod("payIssuerOffer", UUID.class, UUID.class, BigDecimal.class, String.class, String.class)
+                    .invoke(account, player, coin, budget, fingerprint, reference);
+            String code = failureCode(result);
+            return code == null ? PostResult.ok(null, null) : PostResult.fail(code);
+        } catch (Throwable uncertain) {
+            ShopRuntime.LOGGER.error("商店发行人挂单组合付款结果不明：{}", reference, uncertain);
+            return PostResult.fail("settlement_unknown");
+        }
+    }
+
+    @Override
     public PersonalNoteRef findPersonal(String name) {
         try {
             BankBooks books = books();

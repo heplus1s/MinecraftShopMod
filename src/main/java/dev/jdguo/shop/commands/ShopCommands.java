@@ -70,6 +70,14 @@ public final class ShopCommands {
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                         .then(argument("count", IntegerArgumentType.integer(1))
                                                 .executes(ctx -> trade(ctx, false)))))
+                        .then(literal("confirm").then(argument("quoteId", StringArgumentType.word())
+                                .executes(ctx -> confirmPayout(ctx.getSource(),StringArgumentType.getString(ctx,"quoteId")))))
+                        .then(literal("cancel").executes(ctx -> {
+                            ServerPlayerEntity who=player(ctx.getSource());
+                            if(who==null)return problem(ctx.getSource(),ShopText.notPlayer());
+                            dev.jdguo.shop.ui.ShopPayoutPreviews.cancel(who.getUuid());
+                            return info(ctx.getSource(),"已取消组合付款预览，未执行交易。");
+                        }))
                         .then(literal("price")
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                         .executes(ctx -> price(ctx))))
@@ -112,10 +120,23 @@ public final class ShopCommands {
         }
         String itemId = item(ctx);
         int count = IntegerArgumentType.getInteger(ctx, "count");
+        PayChoice selected=ShopChestUiHooks.payer(player);
+        if(!buying && selected.personal()) {
+            var preview=ShopChestUiHooks.previewPayout(player,itemId,count,selected);
+            return preview==null ? problem(source,"无法生成组合付款预览，请检查央行券资金或发行人挂单。") : info(source,preview.message());
+        }
         ShopTradeResult result = buying
                 ? ShopChestUiHooks.buy(player, itemId, count)
                 : ShopChestUiHooks.sell(player, itemId, count);
         return result.success() ? okay(source, result.message()) : problem(source, result.message());
+    }
+
+    private static int confirmPayout(ServerCommandSource source,String quoteId) {
+        ServerPlayerEntity player=player(source);
+        if(player==null)return problem(source,ShopText.notPlayer());
+        var reply=ShopChestUiHooks.confirmPayout(player,quoteId);
+        if(reply.replacement()!=null)return info(source,reply.result().message()+"\n"+reply.replacement().message());
+        return reply.result().success()?okay(source,reply.result().message()):problem(source,reply.result().message());
     }
 
     private static int price(CommandContext<ServerCommandSource> ctx) {

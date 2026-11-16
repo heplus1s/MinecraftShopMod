@@ -30,6 +30,20 @@ public final class TradeJournal {
         return resume(session, purse, player, ref);
     }
 
+    public static Result beginIssuerPayout(ShopSession session, ItemPurse purse, UUID player, PrivatePayoutPlan plan) {
+        if (!session.bank().supportsReferencedSettlement() || !purse.durableDelivery())
+            return new Result(false, "bank_hook_missing", "");
+        String pending = session.book().saved().pendingTrade(player);
+        if (pending != null) return new Result(false, "settlement_pending", pending);
+        pending = session.book().saved().pendingItem(plan.itemId());
+        if (pending != null) return new Result(false, "settlement_pending", pending);
+        String ref = "shop_" + UUID.randomUUID();
+        session.book().saved().beginIssuerPayout(ref, player, plan);
+        try { session.persist(); }
+        catch (RuntimeException uncertain) { return new Result(false, "settlement_pending", ref); }
+        return resume(session, purse, player, ref);
+    }
+
     public static Result resume(ShopSession session, ItemPurse purse, UUID player, String ref) {
         var saved = session.book().saved();
         JsonObject row = saved.trade(ref);
@@ -41,6 +55,8 @@ public final class TradeJournal {
         String item = row.get("item").getAsString();
         int count = row.get("count").getAsInt();
         boolean buying = row.get("buying").getAsBoolean();
+        PrivatePayoutPlan payout = row.has("kind") && "issuer_offer_payout".equals(row.get("kind").getAsString())
+                ? PrivatePayoutPlan.fromJson(row.getAsJsonObject("payoutPlan")) : null;
         String currency = row.get("currency").getAsString();
         PayChoice pay = currency.startsWith("personal:")
                 ? PayChoice.personal(UUID.fromString(currency.substring(9)), currency) : PayChoice.note();
@@ -63,6 +79,15 @@ public final class TradeJournal {
                 if (!"none".equals(bankState)) return pending(ref);
                 return cancel(session, purse, ref, deliveryRef, undoRef, "bank_rejected");
             }
+            if (payout != null && "none".equals(bankState)) {
+                JsonObject current = session.bank().quoteIssuerPayout(payout.currency().personalId(), payout.centralBudget());
+                if (current == null || !current.has("success") || !current.get("success").getAsBoolean()
+                        || !current.has("fingerprint") || !payout.fingerprint().equals(current.get("fingerprint").getAsString())) {
+                    if ("applied".equals(delivery)
+                            && purse.transferReferenced(undoRef, item, count, true) != ItemPurse.Delivery.APPLIED) return pending(ref);
+                    return cancel(session, purse, ref, deliveryRef, undoRef, "payout_quote_changed");
+                }
+            }
             if (!buying && !"applied".equals(delivery)) {
                 state(session, ref, "taking_items");
                 var moved = purse.transferReferenced(deliveryRef, item, count, false);
@@ -72,7 +97,9 @@ public final class TradeJournal {
             }
             if (!"applied".equals(bankState)) {
                 state(session, ref, "posting_bank");
-                ShopBank.PostResult paid = session.bank().postReferenced(player, pay, amount, buying, ref);
+                ShopBank.PostResult paid = payout == null
+                        ? session.bank().postReferenced(player, pay, amount, buying, ref)
+                        : session.bank().payIssuerOffer(player, payout.currency().personalId(), payout.centralBudget(), payout.fingerprint(), ref);
                 if (!paid.success()) {
                     if ("settlement_unknown".equals(paid.code()) || "bank_pending".equals(paid.code())
                             || "persistence_failed".equals(paid.code()) || "save_failed".equals(paid.code())) return pending(ref);

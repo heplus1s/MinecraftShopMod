@@ -34,7 +34,7 @@ Without the bank, the shop still loads. Diamond-equivalent prices can be read. B
 
 每种物品有一个起点，表示它相对于钻石有多难获得。钻石的起点是 1。这只是开张时的价格，不表示以后就该停在这里。
 
-成交时按中央银行当时的汇率，把钻石等值换成玩家选定的一种货币。玩家可以选银行券，也可以选一种个人银行券。一笔订单只用这一种，不找铜锭，也不找钻石。铜锭和钻石本身不能当货款。
+成交时按中央银行当时的汇率，把钻石等值换成玩家选定的一种货币。玩家可以选银行券，也可以选一种个人银行券。购买一笔订单只使用所选货币，不找铜锭或钻石。出售选择个人币时，先预览发行人已挂牌私币与央行券补差组合，明确确认后才成交。铜锭和钻石本身不能当货款。
 
 内部价格曲线以 34 位有效数字保存，显示和支付余额为四位小数。每件物品先换算货币，玩家买入向上舍入、卖出向下舍入，再相加；拆成多笔不会减少相同成交序列的舍入费用。整数零显示成 `0`。不到一个银行券也可以买，只要选定货币的余额够付这四位小数。余额不够就整笔拒绝，不会只成交一部分。没有起点、也没有已经成交的价格时，显示「暂无牌价」，不会临时编一个价。
 
@@ -42,7 +42,7 @@ Without the bank, the shop still loads. Diamond-equivalent prices can be read. B
 
 一步的默认大小是 0.002，也就是当前价格的千分之二。一次购买多个时，价格沿着这一小步往上走，购买先按当前档报价再乘以 1.002；出售先除以 1.002 返回上一档再报价。反向交易沿同一曲线，不再按上涨后的价格立即回购。
 
-Prices start from gathering difficulty relative to one diamond. That anchor is only the opening price. At the moment of a trade it is converted, at the bank's current rate, into the one currency the player selected: the central bank note, or one personal note. Copper and diamond are not payment currencies, and one order does not use a second currency.
+Prices start from gathering difficulty relative to one diamond. That anchor is only the opening price. At the moment of a trade it is converted, at the bank's current rate, into the one currency the player selected: the central bank note, or one personal note. Copper and diamond are not payment currencies. A purchase uses one selected currency. A private-note sale payout requires explicit confirmation of issuer-listed notes plus any central-note remainder.
 
 Curve state keeps 34 significant digits across saves. Payable amounts use four decimals per item: ceiling for player buys and floor for player sells, then sum. This makes batch and split orders follow the same rounding. Integer zero is shown as `0`. An order below one unit is allowed when the selected balance covers that four-decimal total. A short balance refuses the whole order. A missing anchor or live quote is shown as 暂无牌价 and is not replaced with a made-up price.
 
@@ -167,10 +167,21 @@ The license is MIT. Copyright heplus1s.
 
 ### 可靠结算与中断恢复
 
-商店要求新版银行引用接口 `transferReferenced / rollback / receiptStatus / durablePayments`。旧接口不再降级执行付款。每笔订单使用唯一引用：买货的个人币按银行实际抵押链即时清算；卖货按所选币种的真实可支付能力执行，不足时拒绝，玩家可重新选择央行券，商店不自动换币成交。交货明确失败时撤销同一引用，不把退款当成新的一笔卖货或反向发行。
+商店要求新版银行引用接口 `transferReferenced / rollback / receiptStatus / completePayment / durablePayments`。旧接口不再降级执行付款。每笔订单使用唯一引用：买货的个人币按银行实际抵押链即时清算；卖货选择个人币时不再逆向回流回收库，而使用下述发行人现挂币组合付款。交货明确失败时撤销同一引用，不把退款当成新的一笔卖货或反向发行。
 
-订单意图、银行状态和最终价格写入 `data/shopmod-prices.json` 的 `trades`；版本 2 与 `journalRevision` 防止恢复时较旧 NBT 覆盖已保存订单。JSON 使用临时文件、文件强制落盘、原子替换及完整读回；文件保存失败时停止交易，不吞掉错误。目录 fsync 若平台不支持，或 Windows 拒绝打开目录，则记录警告但不阻止交易；断电目录项持久性依赖操作系统，不承诺所有硬件故障下绝对耐久。库存交付不再把装不下的物品扔在地上，普通异常会恢复整份库存。
+订单意图、银行状态和最终价格写入 `data/shopmod-prices.json` 的 `trades`；版本 3 与 `journalRevision` 防止恢复时较旧 NBT 覆盖已保存订单。JSON 使用临时文件、文件强制落盘、原子替换及完整读回；文件保存失败时停止交易，不吞掉错误。目录 fsync 若平台不支持，或 Windows 拒绝打开目录，则记录警告但不阻止交易；断电目录项持久性依赖操作系统，不承诺所有硬件故障下绝对耐久。库存交付不再把装不下的物品扔在地上，普通异常会恢复整份库存。
 
 服务器在修改库存后把订单标记放进原版玩家 `Tags`，与 `Inventory` 同一玩家 NBT 保存；读回标记并核实内存标记、强制文件落盘成功后才将订单完成。不要手动编辑 `shopmod_tx_` 标记或分别恢复银行/商店/玩家存档。当前实现调用 `saveAllPlayerData()`，每笔需要玩家文件 I/O，在线玩家很多时有性能成本。单机存档若玩家当前状态与玩家文件标记不一致，会停止自动恢复而不是猜测发货。
 
 正常订单完成后清理内存标记，在下一次保存随库存一起清理；重连时也只清理日志中已确认完成的旧标记。中断订单会核对银行回执与玩家标记，已给货不重复给、已扣款不重复扣。无法判明时锁定相关玩家和商品，显示订单号供管理员核对，不自动退款或重发。不确定状态仍可能需要人工处理；这不是把多个独立文件变成同一个数据库事务。
+
+
+### 出售物品：发行人挂单认购与央行券补差
+
+选择个人币收款时，系统以本次商品的央行券买入价作为总应付预算，只认购该币**发行人本人已持有、已挂牌**的整币，不增发、不使用回收库、不改变原准备金。系统实际央行券支付给发行人储蓄，认购私币交给出售物品的玩家；挂币不足或整币除不尽的部分以央行券补齐。无可成交私币时，明确预览全部央行券。系统必须有足够真实央行券承担整份预算，实物估值不能替代现金。没有新增手续费，也不合并其他发行人的挂单。
+
+- `/shop sell <item> <count>`：选私币时仅生成预览；用 `/shop confirm <quoteId>` 确认，`/shop cancel` 取消。
+- 原版箱子：展示私币数量、单价、发行人入款、央行券补差和总应付，再点确认。
+- 增强界面：展示可滚动组合确认页；旧服务器不支持该能力时拒绝执行私币卖货。
+
+预览绑定当前玩家，30 秒有效且只能使用一次；撤单、余额/价格/组合变化会要求重新预览确认。断线、关闭/取消和服务器停止清理尚未确认的 token。新订单以 `issuer_offer_payout` 类型保存完整计划，不会在中断恢复时改价。银行先托管实际现金与挂币，库存扣取有耐久证明后 `completePayment` 才同时给发行人入款、玩家入私币与央行券。老版本已付款未完成订单保留旧 schema 恢复，不改解释为新交易。

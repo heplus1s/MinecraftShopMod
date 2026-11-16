@@ -26,6 +26,7 @@ public final class ShopChestScreen extends GenericContainerScreenHandler {
     private boolean buying=true;
     private PayChoice pay;
     private ShopQuoteView quote;
+    private ShopPayoutPreviews.Preview payoutPreview;
     private String status="选择商品查看整单报价；不会立即扣款。";
     private ShopChestScreen(int id,PlayerInventory inv,ServerPlayerEntity player,SimpleInventory menu) {
         super(ScreenHandlerType.GENERIC_9X6,id,inv,menu,6);this.viewer=player;this.menu=menu;pay=ShopChestUiHooks.payer(player);render();
@@ -43,11 +44,27 @@ public final class ShopChestScreen extends GenericContainerScreenHandler {
             var row=ShopRuntime.config.catalog().get(i);shown.add(row.itemId());Item item=Registries.ITEM.get(new Identifier(row.itemId()));
             icon(i-page*27,item==Items.AIR?Items.PAPER:item,row.name(),"点击选择，尚未交易");
         }
-        quote=selected==null?null:ShopChestUiHooks.quote(selected,count,buying,pay);
-        icon(28,Items.PAPER,selected==null?"未选择商品":quote.itemName(),selected==null?"从上方目录选择":selected);
+        boolean mixed=!buying && pay.personal();
+        payoutPreview=selected!=null && mixed?ShopChestUiHooks.previewPayout(viewer,selected,count,pay):null;
+        if(!mixed)ShopPayoutPreviews.cancel(viewer.getUuid());
+        quote=selected==null || mixed?null:ShopChestUiHooks.quote(selected,count,buying,pay);
+        icon(28,Items.PAPER,selected==null?"未选择商品":ShopRuntime.config.entry(selected).name(),selected==null?"从上方目录选择":selected);
         icon(29,Items.REDSTONE,"数量 -1");icon(30,Items.REDSTONE,"数量 -16");icon(31,Items.PAPER,"数量 "+count);icon(32,Items.GLOWSTONE_DUST,"数量 +16");icon(33,Items.GLOWSTONE_DUST,"数量 +1");
         icon(37,buying?Items.CHEST:Items.HOPPER,buying?"购买模式 · 点击切换出售":"出售模式 · 点击切换购买");
-        icon(39,Items.GOLD_INGOT,"结算货币："+pay.name(),"点击切换中央银行券/可用个人券","不会自动换汇");
+        icon(39,Items.GOLD_INGOT,"结算货币："+pay.name(),"点击切换中央银行券/可用个人券",mixed?"从发行人本人挂单认购，不足部分央行券补齐":"不会自动换汇");
+        if(selected!=null && mixed) {
+            if(payoutPreview==null) icon(41,Items.BARRIER,"暂无可执行组合报价","检查央行券资金、发行人挂单及银行版本");
+            else {
+                var bank=payoutPreview.plan().bankQuote();
+                icon(41,Items.PAPER,bank.get("privateAmount").getAsBigDecimal().signum()==0?"本次全部以央行券支付":"组合收款预览",
+                        "私币："+bank.get("privateAmount").getAsString()+" "+pay.name(),
+                        "补差："+bank.get("centralRemainder").getAsString()+" 央行券",
+                        "成交价："+bank.get("unitPrice").getAsString()+" 央行券/币",
+                        "总应付："+payoutPreview.plan().centralBudget().toPlainString()+" 央行券",
+                        "发行人储蓄入款："+bank.get("issuerProceeds").getAsString()+" 央行券");
+                icon(43,Items.EMERALD,"确认组合出售","确认上列数量、成交价和补差","报价变化后须再次确认；准备金不变");
+            }
+        }
         if(quote!=null) {
             icon(41,Items.PAPER,"整单金额："+(quote.charge()==null?"暂无有效报价":quote.charge().toPlainString())+" "+pay.name(),quote.message()==null?"":quote.message());
             if(quote.charge()!=null && "ready".equals(quote.code())) icon(43,Items.EMERALD,buying?"确认购买":"确认出售","数量 "+count,"整单 "+quote.charge().toPlainString()+" "+pay.name(),"价格变动时需重新确认；从银行账户结算");
@@ -62,7 +79,7 @@ public final class ShopChestScreen extends GenericContainerScreenHandler {
     }
     @Override public void onSlotClick(int slot,int button,SlotActionType action,PlayerEntity player) {
         if(player!=viewer || viewer.currentScreenHandler!=this || !viewer.isAlive() || viewer.isSpectator() || action!=SlotActionType.PICKUP || button!=0 || slot<0 || slot>=54)return;
-        if(slot==53){viewer.closeHandledScreen();return;}
+        if(slot==53){ShopPayoutPreviews.cancel(viewer.getUuid());viewer.closeHandledScreen();return;}
         if(slot<shown.size())selected=shown.get(slot);
         else switch(slot) {
             case 29 -> count=Math.max(1,count-1);
@@ -79,11 +96,21 @@ public final class ShopChestScreen extends GenericContainerScreenHandler {
         render();
     }
     private void confirm() {
+        if(!buying && pay.personal()) {
+            if(selected==null || payoutPreview==null)return;
+            var reply=ShopChestUiHooks.confirmPayout(viewer,payoutPreview.id());
+            status=reply.result().message();viewer.sendMessage(Text.literal(status),false);
+            if(reply.replacement()==null){selected=null;payoutPreview=null;}
+            return;
+        }
         if(selected==null || quote==null || quote.charge()==null || !"ready".equals(quote.code()))return;
         ShopQuoteView current=ShopChestUiHooks.quote(selected,count,buying,pay);
         if(!QuoteGuard.same(quote.charge(),current.charge()) || !"ready".equals(current.code())) {status="报价已经变化或暂不可用，请查看新金额后再次确认。";return;}
         ShopTradeResult result=buying?ShopChestUiHooks.buy(viewer,selected,count,pay):ShopChestUiHooks.sell(viewer,selected,count,pay);
         status=result.message();viewer.sendMessage(Text.literal(status),false);selected=null;quote=null; // One click consumes selection, including failures.
+    }
+    @Override public void onClosed(PlayerEntity player) {
+        ShopPayoutPreviews.cancel(player.getUuid()); super.onClosed(player);
     }
     @Override public ItemStack quickMove(PlayerEntity player,int slot){return ItemStack.EMPTY;}
     @Override public boolean canUse(PlayerEntity player){return player==viewer && viewer.isAlive() && !viewer.isSpectator();}

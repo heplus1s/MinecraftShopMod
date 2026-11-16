@@ -57,6 +57,16 @@ public final class ShopChestUiHooks {
         return TradeDesk.sell(ShopRuntime.session(), new PlayerPurse(player), player.getUuid(), pay, itemId, count);
     }
 
+    public static ShopPayoutPreviews.Preview previewPayout(ServerPlayerEntity player, String item, int count, PayChoice pay) {
+        requirePlayer(player);
+        if (!PlayerPurse.knownItem(item)) return null;
+        return ShopPayoutPreviews.create(ShopRuntime.session(), player.getUuid(), item, count, pay);
+    }
+    public static ShopPayoutPreviews.Confirmation confirmPayout(ServerPlayerEntity player, String quoteId) {
+        requirePlayer(player);
+        return ShopPayoutPreviews.confirm(ShopRuntime.session(),new PlayerPurse(player),player.getUuid(),quoteId);
+    }
+
     public static List<ShopListingView> listings(int page) {
         return listings(page, PayChoice.note());
     }

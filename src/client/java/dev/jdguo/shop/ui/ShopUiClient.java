@@ -71,6 +71,9 @@ public final class ShopUiClient implements ClientModInitializer {
         sendAction(buy ? "buy" : "sell", itemId, count, 1, currency);
     }
 
+    static void confirmPayout(String quoteId) { sendAction("payout_confirm",quoteId,0,1,null); }
+    static void cancelPayout() { sendAction("payout_cancel","",0,1,null); }
+
     static void sendList() {
         sendAction("list", "", 1, 1, null);
     }
@@ -96,6 +99,12 @@ public final class ShopUiClient implements ClientModInitializer {
             return;
         }
         pending = data;
+        if(data.has("payoutPreview") && data.get("payoutPreview").isJsonObject()) {
+            awaitingOpen=0; client.setScreen(new ShopPayoutConfirmScreen(data)); return;
+        }
+        if(client.currentScreen instanceof ShopPayoutConfirmScreen) {
+            client.setScreen(new ShopScreen(data)); return;
+        }
         if (client.currentScreen instanceof ShopScreen screen) {
             screen.show(data);
             awaitingOpen = 0;

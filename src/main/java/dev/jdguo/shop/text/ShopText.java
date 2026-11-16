@@ -17,6 +17,8 @@ public final class ShopText {
         return """
                 /shop buy <item> <count>
                 /shop sell <item> <count>
+                /shop confirm <quoteId>
+                /shop cancel
                 /shop price <item>
                 /shop list [page]
                 /shop currency
@@ -67,7 +69,7 @@ public final class ShopText {
     }
 
     public static String currencySet(String name) {
-        return "结算货币已改为" + name + "。之后买卖使用此货币；系统实际清算资产不足时拒绝，不自动切换币种。";
+        return "结算货币已改为" + name + "。购买按所选币支付；出售选个人币时先预览发行人挂币与央行券补差，确认后成交。";
     }
 
     public static String zeroCharge() {
