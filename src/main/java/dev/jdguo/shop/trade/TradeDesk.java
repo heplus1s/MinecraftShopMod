@@ -126,7 +126,7 @@ public final class TradeDesk {
                     ? MoneyScale.quantize(entry.anchorDiamonds()) : null, false)
                     : session.book().lookup(config, entry.itemId());
             BigDecimal each = MoneyScale.positive(lookup.diamondEach())
-                    ? MarketInfluence.adjusted(entry.itemId(), lookup.diamondEach(), rate(session.bank(), PayChoice.note())) : null;
+                    ? MarketInfluence.adjusted(entry.itemId(), lookup.diamondEach(), rate(session.bank(), PayChoice.note()), config.spreadFraction()) : null;
             BigDecimal notes = each == null ? null : PriceMath.charge(each, rate);
             rows.add(new ShopListingView(entry.itemId(), entry.name(), each, entry.anchorDiamonds(), notes));
         }
@@ -214,7 +214,7 @@ public final class TradeDesk {
         BigDecimal referenceRate = rate(bank, PayChoice.note());
         PriceMath.Execution execution = PriceMath.execution(prepared.basePrice,
                 config.stepFraction(), config.minDiamondPrice(), count, buying, config.spreadFraction(),
-                base -> MarketInfluence.adjusted(prepared.itemId, base, referenceRate), rate);
+                base -> MarketInfluence.adjusted(prepared.itemId, base, referenceRate, config.spreadFraction()), rate);
         prepared.path = execution.path();
         prepared.lookup = new PriceBook.Lookup(entry, execution.first(), lookup.corrupt());
         prepared.charge = execution.charge();
