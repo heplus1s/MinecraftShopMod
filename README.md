@@ -4,9 +4,9 @@ Fabric 1.20.1 商店模组：玩家和服务器买卖物品，货款记在央行
 
 A Fabric 1.20.1 shop where players buy from and sell to the server. Payments go to a shop operating account under central-bank savings. Prices start from gather difficulty relative to diamonds, then drift with supply and demand.
 
-支持指令、实体柜台和原版箱子交易界面。可选的独立客户端界面放在 MinecraftUIMod。不装界面包也可以进服。
+支持指令、实体柜台和原版箱子交易界面。增强客户端界面已内置于本主模组，不安装客户端模组也可以进服。
 
-Commands come first. A chest GUI is not included yet, but the hook is reserved. Optional client UI will live in MinecraftUIMod. Vanilla clients can still join.
+Commands, physical counters and vanilla chest screens are available. The optional enhanced UI is embedded in this jar. Vanilla clients can still join.
 
 ## 向谁买卖
 
@@ -100,11 +100,11 @@ The mod still loads. Price and list keep working in diamond equivalents. Buy and
 
 ## 箱子界面和独立客户端
 
-柜台和 `/shop ui` 打开原版箱子界面，调用 `dev.jdguo.shop.ui.ShopChestUiHooks` 报价、购买和出售，计价和入账仍由既有交易服务处理。
+柜台和 `/shop ui` 已提供原版箱子界面，调用 `dev.jdguo.shop.ui.ShopChestUiHooks`，用它报价、购买和出售。计价和入账仍留在商店里，不必重写。
 
-可选的客户端以后放在 [MinecraftUIMod](https://github.com/heplus1s/MinecraftUIMod)。它如果要同步，使用服务器上的 `shopmod:hello`、`shopmod:action` 和 `shopmod:sync`。没有安装这个界面的原版客户端可以照常进服，服务器不会向它发送这个频道。
+可选的客户端界面已内置于主模组。它如果要同步，使用服务器上的 `shopmod:hello`、`shopmod:action` 和 `shopmod:sync`。没有安装这个界面的原版客户端可以照常进服，服务器不会向它发送这个频道。
 
-The counter and `/shop ui` open a vanilla chest screen using `dev.jdguo.shop.ui.ShopChestUiHooks`. Optional client UI belongs in MinecraftUIMod and may use the `shopmod` hello, action, and sync payloads. Vanilla clients can join without that pack.
+The vanilla chest screen calls `dev.jdguo.shop.ui.ShopChestUiHooks`. Optional client UI is embedded in this jar and may use the `shopmod` hello, action, and sync payloads. Vanilla clients can join without that pack.
 
 ## 配置和存档
 
@@ -146,3 +146,12 @@ The license is MIT. Copyright heplus1s.
 右键柜台或底座打开目录，可选择商品、数量、购买/出售模式和银行实际提供的结算货币。再点击确认才结算；确认时重新验证整单报价，变动会要求重新确认。交易仍由已有 TradeDesk 和银行接口处理，柜台不直接改余额。菜单展示物不能取走，快捷移动、拖动、交换和双击不触发交易。一次确认后清空选中商品，避免重复点击意外连续成交。
 
 新柜台是所有网点共享的服务器商店，不是玩家私人箱子商店或独立库存；不改变既有定价和远程交易规则。仍需验证实际游戏的柜台显示、跨区块重载及原版客户端联机交互。
+
+
+## 内置客户端界面
+
+本主模组 JAR 同时包含服务端逻辑与可选客户端界面。服务器安装后，原版客户端无需安装本模组即可使用原有命令/原版菜单。客户端安装同一 JAR 可启用增强界面；界面只在客户端入口加载，服务端保持交易权威。
+
+升级时请移除旧 `shopmod-ui` 独立 JAR；同时安装会由 Fabric Loader 明确拒绝，以避免重复接收器、快捷键和类冲突。不要保留同一主模组的两个版本。只安装本地客户端不会改变远端服务器数据；不支持相关网络通道的服务器不会接收本 UI 操作。
+
+兼容性验收仍需分别执行：专用服务器+原版客户端、Fabric空客户端、完整客户端、单人世界切换远程服务器、旧 UI 包并存的拒绝提示、协议不匹配时的基础入口。构建通过不等同于实际联机验收。
