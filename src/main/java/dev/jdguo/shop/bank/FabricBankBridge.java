@@ -216,6 +216,7 @@ public final class FabricBankBridge implements ShopBank {
                     BigDecimal.class, boolean.class, String.class);
             account.getClass().getMethod("rollback", String.class);
             account.getClass().getMethod("receiptStatus", String.class);
+            account.getClass().getMethod("completePayment", String.class);
             return Boolean.TRUE.equals(account.getClass().getMethod("durablePayments").invoke(account));
         } catch (ReflectiveOperationException error) { return false; }
     }
@@ -249,6 +250,20 @@ public final class FabricBankBridge implements ShopBank {
             return code == null ? PostResult.ok(null, null) : PostResult.fail(code);
         } catch (Throwable error) {
             ShopRuntime.LOGGER.error("商店结算回滚结果不明：{}", reference, error);
+            return PostResult.fail("settlement_unknown");
+        }
+    }
+
+    @Override
+    public PostResult completePayment(String reference) {
+        Object account = account();
+        if (account == null || !supportsReferencedSettlement()) return PostResult.fail("bank_hook_missing");
+        try {
+            Object result = account.getClass().getMethod("completePayment", String.class).invoke(account, reference);
+            String code = failureCode(result);
+            return code == null ? PostResult.ok(null, null) : PostResult.fail(code);
+        } catch (Throwable error) {
+            ShopRuntime.LOGGER.error("商店交付确认结果不明：{}", reference, error);
             return PostResult.fail("settlement_unknown");
         }
     }

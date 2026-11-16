@@ -94,4 +94,16 @@ class TradeJournalTest {
         assertEquals("settlement_pending", TradeDesk.buy(session, new MapPurse(), UUID.randomUUID(), PayChoice.note(), item, 1).code());
         assertEquals(1, bank.referencedCalls);
     }
+    @Test void failedBankCompletionDoesNotRedeliverAndRetriesAcknowledgement() {
+        bank.failComplete = true;
+        var session = session(() -> {});
+        assertEquals("settlement_pending", TradeDesk.buy(session, purse, player, PayChoice.note(), item, 1).code());
+        String ref = book.saved().pendingTrade(player);
+        assertEquals(1, purse.plainCount(item)); assertEquals(1, bank.referencedCalls);
+        bank.failComplete = false;
+        assertTrue(TradeJournal.resume(session, purse, player, ref).success());
+        assertEquals(1, purse.plainCount(item)); assertEquals(1, bank.referencedCalls);
+        assertEquals(2, bank.completionCalls); same("98.98", bank.player("note"));
+    }
+
 }

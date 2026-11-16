@@ -56,6 +56,8 @@ public interface ShopBank {
     }
     /** Exact inverse of this reference, not a new opposite-direction trade. */
     default PostResult rollback(String reference) { return PostResult.fail("bank_hook_missing"); }
+    /** Release pending settlement locks only after inventory delivery is durably proved. */
+    default PostResult completePayment(String reference) { return PostResult.fail("bank_hook_missing"); }
     default String receiptStatus(String reference) { return "unknown"; }
 
 

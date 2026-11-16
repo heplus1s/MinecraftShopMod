@@ -98,6 +98,9 @@ public final class TradeJournal {
             BigDecimal current = session.book().lookup(session.config(), item).diamondEach();
             if (current == null || (current.compareTo(before) != 0 && current.compareTo(after) != 0)) return pending(ref);
             state(session, ref, "completing");
+            // Goods are durably proved above. Release bank locks idempotently before
+            // finalizing the shop journal; a failed acknowledgement must never redeliver.
+            if (!session.bank().completePayment(ref).success()) return pending(ref);
             session.book().commit(item, after);
             saved.tradeState(ref, "completed");
             try { session.persist(); }

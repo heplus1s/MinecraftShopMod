@@ -26,6 +26,8 @@ public final class MemoryBank implements ShopBank {
     public boolean unknownAfterPostOnce;
     public int referencedCalls;
     public int rollbackCalls;
+    public boolean failComplete;
+    public int completionCalls;
 
     public MemoryBank() {
         player.put("note", new BigDecimal("100"));
@@ -103,6 +105,11 @@ public final class MemoryBank implements ShopBank {
             return PostResult.fail("settlement_unknown");
         }
         return result;
+    }
+    @Override public PostResult completePayment(String reference) {
+        completionCalls++;
+        return failComplete || !"applied".equals(receiptStatus(reference))
+                ? PostResult.fail("save_failed") : PostResult.ok(null, null);
     }
     @Override public PostResult rollback(String reference) {
         rollbackCalls++;
