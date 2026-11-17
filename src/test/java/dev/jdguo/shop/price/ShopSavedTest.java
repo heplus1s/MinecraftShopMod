@@ -57,4 +57,16 @@ class ShopSavedTest {
         book.reset("minecraft:diamond");
         assertEquals(0, book.lookup(config, "minecraft:diamond").diamondEach().compareTo(new BigDecimal("2")));
     }
+    @Test void onlyCompletedShopTradesAppearOnceAndSurviveReload() {
+        var saved=ShopSaved.empty();var player=java.util.UUID.randomUUID();
+        saved.beginTrade("a",player,"minecraft:diamond_sword",1,true,"note",new BigDecimal("4.25"),BigDecimal.ONE,BigDecimal.TEN);
+        assertEquals(0,saved.marketTrades().size());
+        saved.tradeState("a","completed");
+        saved.beginTrade("b",player,"minecraft:diamond_sword",1,false,"note",new BigDecimal("4"),BigDecimal.TEN,BigDecimal.ONE);
+        saved.tradeState("b","cancelled");
+        var history=ShopSaved.parse(saved.toJson()).marketTrades();
+        assertEquals(1,history.size());assertEquals("a",history.get(0).getAsJsonObject().get("reference").getAsString());
+        assertEquals("4.25",history.get(0).getAsJsonObject().get("amount").getAsString());
+        assertEquals(1,saved.marketTrades().size());
+    }
 }

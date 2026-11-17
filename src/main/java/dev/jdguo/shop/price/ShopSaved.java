@@ -118,6 +118,22 @@ public final class ShopSaved {
         }
         return null;
     }
+    public com.google.gson.JsonArray marketTrades() {
+        var out = new com.google.gson.JsonArray();
+        var rows = trades().entrySet().stream().filter(e -> "completed".equals(e.getValue().getAsJsonObject().get("state").getAsString()))
+                .sorted(java.util.Comparator.comparingLong(e -> e.getValue().getAsJsonObject().get("updatedAt").getAsLong())).toList();
+        for (var entry : rows.subList(Math.max(0, rows.size() - 80), rows.size())) {
+            var row = entry.getValue().getAsJsonObject(); var t = new JsonObject();
+            t.addProperty("reference", entry.getKey()); t.addProperty("source", "system_shop");
+            t.addProperty("itemId", row.get("item").getAsString()); t.addProperty("variantKey", "default");
+            t.addProperty("count", row.get("count").getAsInt()); t.addProperty("amount", row.get("amount").getAsString());
+            t.addProperty("currency", row.has("kind") && "issuer_offer_payout".equals(row.get("kind").getAsString()) ? "note" : row.get("currency").getAsString());
+            t.addProperty("at", row.get("updatedAt").getAsLong()); t.addProperty("buying", row.get("buying").getAsBoolean());
+            out.add(t);
+        }
+        return out;
+    }
+
     private JsonObject trades() {
         if (!root.has("trades")) root.add("trades", new JsonObject());
         return root.getAsJsonObject("trades");
