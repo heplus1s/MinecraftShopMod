@@ -17,14 +17,18 @@ public record PrivatePayoutPlan(String itemId, String itemName, int count, PayCh
                 && fingerprint().equals(other.fingerprint());
     }
     public String description() {
+        return description("央行券");
+    }
+    public String description(String centralName) {
+        if (centralName == null || centralName.isBlank()) centralName = "央行券";
         JsonObject q=bankQuote();
         String fallback=q.get("privateAmount").getAsBigDecimal().signum()==0
-                ? "本次无可成交私币，全部以央行券支付。\n" : "";
-        return fallback + "出售 " + itemName + " ×" + count + "；总应付 " + centralBudget.toPlainString() + " 央行券。\n"
+                ? "本次无可成交私币，全部以" + centralName + "支付。\n" : "";
+        return fallback + "出售 " + itemName + " ×" + count + "；总应付 " + centralBudget.toPlainString() + " " + centralName + "。\n"
                 + "你将收到 " + number(q,"privateAmount") + " " + currency.name()
-                + " ＋ " + number(q,"centralRemainder") + " 央行券。\n"
-                + "发行人挂单成交价：每币 " + number(q,"unitPrice") + " 央行券；发行人收到 "
-                + number(q,"issuerProceeds") + " 央行券。原准备金不变。";
+                + " ＋ " + number(q,"centralRemainder") + " " + centralName + "。\n"
+                + "发行人挂单成交价：每币 " + number(q,"unitPrice") + " " + centralName + "；发行人收到 "
+                + number(q,"issuerProceeds") + " " + centralName + "。原准备金不变。";
     }
     private static String number(JsonObject q,String key) { return q.get(key).getAsBigDecimal().stripTrailingZeros().toPlainString(); }
     public JsonObject toJson() {

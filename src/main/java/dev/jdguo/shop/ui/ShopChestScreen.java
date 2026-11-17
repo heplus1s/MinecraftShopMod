@@ -51,17 +51,18 @@ public final class ShopChestScreen extends GenericContainerScreenHandler {
         icon(28,Items.PAPER,selected==null?"未选择商品":ShopRuntime.config.entry(selected).name(),selected==null?"从上方目录选择":selected);
         icon(29,Items.REDSTONE,"数量 -1");icon(30,Items.REDSTONE,"数量 -16");icon(31,Items.PAPER,"数量 "+count);icon(32,Items.GLOWSTONE_DUST,"数量 +16");icon(33,Items.GLOWSTONE_DUST,"数量 +1");
         icon(37,buying?Items.CHEST:Items.HOPPER,buying?"购买模式 · 点击切换出售":"出售模式 · 点击切换购买");
-        icon(39,Items.GOLD_INGOT,"结算货币："+pay.name(),"点击切换央行券/可用个人券",mixed?"从发行人本人挂单认购，不足部分央行券补齐":"不会自动换汇");
+        String centralName=ShopRuntime.bank.currencyName();
+        icon(39,Items.GOLD_INGOT,"结算货币："+pay.name(),"点击切换"+centralName+"/可用个人券",mixed?"从发行人本人挂单认购，不足部分"+centralName+"补齐":"不会自动换汇");
         if(selected!=null && mixed) {
-            if(payoutPreview==null) icon(41,Items.BARRIER,"暂无可执行组合报价","检查央行券资金、发行人挂单及银行版本");
+            if(payoutPreview==null) icon(41,Items.BARRIER,"暂无可执行组合报价","检查"+centralName+"资金、发行人挂单及银行版本");
             else {
                 var bank=payoutPreview.plan().bankQuote();
-                icon(41,Items.PAPER,bank.get("privateAmount").getAsBigDecimal().signum()==0?"本次全部以央行券支付":"组合收款预览",
+                icon(41,Items.PAPER,bank.get("privateAmount").getAsBigDecimal().signum()==0?"本次全部以"+centralName+"支付":"组合收款预览",
                         "私币："+bank.get("privateAmount").getAsString()+" "+pay.name(),
-                        "补差："+bank.get("centralRemainder").getAsString()+" 央行券",
-                        "成交价："+bank.get("unitPrice").getAsString()+" 央行券/币",
-                        "总应付："+payoutPreview.plan().centralBudget().toPlainString()+" 央行券",
-                        "发行人储蓄入款："+bank.get("issuerProceeds").getAsString()+" 央行券");
+                        "补差："+bank.get("centralRemainder").getAsString()+" "+centralName,
+                        "成交价："+bank.get("unitPrice").getAsString()+" "+centralName+"/币",
+                        "总应付："+payoutPreview.plan().centralBudget().toPlainString()+" "+centralName,
+                        "发行人储蓄入款："+bank.get("issuerProceeds").getAsString()+" "+centralName);
                 icon(43,Items.EMERALD,"确认组合出售","确认上列数量、成交价和补差","报价变化后须再次确认；准备金不变");
             }
         }
