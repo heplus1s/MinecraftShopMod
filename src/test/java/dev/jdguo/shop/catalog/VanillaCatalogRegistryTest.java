@@ -9,7 +9,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Full mapped Minecraft test, not merely checking translated block names. */
 class VanillaCatalogRegistryTest {
  @Test void everyDefaultCatalogIdIsAnActualInventoryItem() {
-  SharedConstants.createGameVersion(); Bootstrap.initialize();
+  SharedConstants.createGameVersion();
+  Bootstrap.initialize();
   for(var entry:ShopConfig.defaults().catalog()) {
    var id=new Identifier(entry.itemId());
    assertTrue(Registries.ITEM.containsId(id),entry.itemId());
