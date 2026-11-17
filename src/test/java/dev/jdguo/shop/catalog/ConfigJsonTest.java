@@ -34,4 +34,17 @@ class ConfigJsonTest {
     void aLargeStepIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> ShopConfig.defaults().withStep(new BigDecimal("0.5")));
     }
+    @Test void legacyCatalogAddsEquipmentWithoutChangingCustomPrices() {
+        ShopConfig config = ConfigJson.parse("{\"catalog\":[{\"item\":\"minecraft:diamond_sword\",\"name\":\"自定义剑\",\"anchorDiamonds\":\"8\"}]}");
+        assertEquals(new BigDecimal("8"), config.entry("minecraft:diamond_sword").anchorDiamonds());
+        assertEquals("自定义剑", config.entry("minecraft:diamond_sword").name());
+        assertTrue(config.entry("minecraft:netherite_pickaxe") != null);
+        assertTrue(config.entry("minecraft:comparator") != null);
+        config.validate();
+    }
+    @Test void migratedCatalogHonorsExplicitRemoval() {
+        ShopConfig config = ConfigJson.parse("{\"catalogVersion\":2,\"catalog\":[]}");
+        assertEquals(0, config.catalog().size());
+        assertEquals(0, ConfigJson.parse(ConfigJson.write(config)).catalog().size());
+    }
 }

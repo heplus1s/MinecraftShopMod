@@ -55,6 +55,11 @@ public final class ConfigJson {
             BigDecimal anchor = new BigDecimal(text(row.get("anchorDiamonds")));
             catalog.add(new CatalogEntry(item, name, anchor));
         }
+        // One-time versioned addition: keep existing custom entries and all their prices.
+        if (!root.has("catalogVersion") || root.get("catalogVersion").getAsInt() < 2) {
+            for (CatalogEntry entry : ShopConfig.equipmentCatalog())
+                if (catalog.stream().noneMatch(old -> old.itemId().equals(entry.itemId()))) catalog.add(entry);
+        }
         ShopConfig config = new ShopConfig(step, floor, maxCount, pageSize, catalog, spread);
         config.validate();
         return config;
@@ -77,7 +82,7 @@ public final class ConfigJson {
 
     private static String pretty(JsonObject root) {
         StringBuilder out = new StringBuilder();
-        out.append("{\n");
+        out.append("{\n  \"catalogVersion\": 2,\n");
         out.append("  \"stepFraction\": \"").append(root.get("stepFraction").getAsString()).append("\",\n");
         out.append("  \"spreadFraction\": \"").append(root.get("spreadFraction").getAsString()).append("\",\n");
         out.append("  \"minDiamondPrice\": \"").append(root.get("minDiamondPrice").getAsString()).append("\",\n");

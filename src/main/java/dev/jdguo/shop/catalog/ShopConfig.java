@@ -196,6 +196,38 @@ public final class ShopConfig {
         list.add(item("minecraft:nether_star", "下界之星", "20"));
         list.add(item("minecraft:elytra", "鞘翅", "24"));
         list.add(item("minecraft:enchanted_golden_apple", "附魔金苹果", "36"));
+        list.addAll(equipmentCatalog());
+        return list;
+    }
+
+    /** New catalog generation. Prices are explicit diamond anchors, never invented market fills. */
+    public static List<CatalogEntry> equipmentCatalog() {
+        List<CatalogEntry> list = new ArrayList<>();
+        String[] tiers = {"wooden", "stone", "iron", "golden", "diamond", "netherite"};
+        String[] labels = {"木", "石", "铁", "金", "钻石", "下界合金"};
+        String[] kinds = {"sword", "pickaxe", "axe", "shovel", "hoe"};
+        String[] names = {"剑", "镐", "斧", "锹", "锄"};
+        int[] units = {2, 3, 3, 1, 2};
+        BigDecimal[] materials = {new BigDecimal("0.001"), new BigDecimal("0.0008"), new BigDecimal("0.06"), new BigDecimal("0.15"), BigDecimal.ONE};
+        for (int t = 0; t < tiers.length; t++) for (int k = 0; k < kinds.length; k++) {
+            BigDecimal price = t == 5 ? BigDecimal.valueOf(units[k]).add(new BigDecimal("21.01"))
+                    : materials[t].multiply(BigDecimal.valueOf(units[k])).add(new BigDecimal("0.002"));
+            list.add(new CatalogEntry("minecraft:" + tiers[t] + "_" + kinds[k], labels[t] + names[k], price));
+        }
+        list.add(item("minecraft:bow", "弓", "0.028"));
+        list.add(item("minecraft:crossbow", "弩", "0.082"));
+        list.add(item("minecraft:shield", "盾牌", "0.065"));
+        list.add(item("minecraft:trident", "三叉戟", "12"));
+        list.add(item("minecraft:fishing_rod", "钓鱼竿", "0.020"));
+        list.add(item("minecraft:shears", "剪刀", "0.12"));
+        list.add(item("minecraft:flint_and_steel", "打火石", "0.065"));
+        list.add(item("minecraft:redstone_block", "红石块", "0.18"));
+        list.add(item("minecraft:redstone_torch", "红石火把", "0.021"));
+        list.add(item("minecraft:repeater", "红石中继器", "0.065"));
+        list.add(item("minecraft:comparator", "红石比较器", "0.086"));
+        list.add(item("minecraft:redstone_lamp", "红石灯", "0.20"));
+        list.add(item("minecraft:redstone_ore", "红石矿石", "0.12"));
+        list.add(item("minecraft:deepslate_redstone_ore", "深层红石矿石", "0.12"));
         return list;
     }
 

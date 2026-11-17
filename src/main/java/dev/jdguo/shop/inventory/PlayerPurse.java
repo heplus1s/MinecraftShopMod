@@ -171,7 +171,15 @@ public final class PlayerPurse implements ItemPurse {
     }
 
     private static boolean plain(ItemStack stack, Item item) {
-        return stack != null && !stack.isEmpty() && stack.isOf(item) && stack.getNbt() == null;
+        return stack != null && !stack.isEmpty() && stack.isOf(item) && pristine(stack);
+    }
+
+    /** Damage:0 is vanilla metadata on newly crafted tools, not a custom variant. */
+    static boolean pristine(ItemStack stack) {
+        if (stack.isDamaged()) return false;
+        var tag = stack.getNbt();
+        return tag == null || tag.isEmpty() || (tag.getSize() == 1
+                && tag.contains("Damage", 3) && tag.getInt("Damage") == 0);
     }
 
     private static int[] slots() {
