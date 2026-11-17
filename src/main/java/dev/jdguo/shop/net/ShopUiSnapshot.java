@@ -51,6 +51,7 @@ public final class ShopUiSnapshot {
         if (centralRate != null && centralRate.signum() > 0) {
             JsonObject central = new JsonObject();
             central.addProperty("id", "note");
+            central.addProperty("name", bank.currencyName());
             central.addProperty("unitsPerDiamond", centralRate.toPlainString());
             currencies.add(central);
         }

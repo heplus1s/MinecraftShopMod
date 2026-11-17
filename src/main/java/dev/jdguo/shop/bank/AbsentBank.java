@@ -16,7 +16,7 @@ public final class AbsentBank implements ShopBank {
     @Override public boolean operatingHookInstalled() { return false; }
     @Override public boolean operatingAccountReady() { return false; }
     @Override public String currencyId() { return "note"; }
-    @Override public String currencyName() { return "银行券"; }
+    @Override public String currencyName() { return "央行券"; }
     @Override public BigDecimal unitsPerDiamond(PayChoice choice) { return null; }
     @Override public BigInteger copperPerDiamond() { return null; }
     @Override public BigDecimal annualInterestFraction() { return null; }

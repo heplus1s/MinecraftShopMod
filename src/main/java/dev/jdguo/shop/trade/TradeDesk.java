@@ -342,7 +342,7 @@ public final class TradeDesk {
         private int count;
         private boolean buying;
         private PayChoice pay = PayChoice.note();
-        private String currency = "银行券";
+        private String currency = "央行券";
         private String settlementCode = "ready";
         private CatalogEntry entry;
         BigDecimal basePrice;

@@ -17,10 +17,10 @@ class ShopQuotesTest {
         List<ShopQuotes.Pay> pays = ShopQuotes.payCurrencies(data);
 
         assertEquals("note", pays.get(0).id());
-        assertEquals("银行券", pays.get(0).label());
+        assertEquals("央行券", pays.get(0).label());
         assertEquals(3, pays.size());
-        assertEquals("个人银行券 张三", pays.get(1).label());
-        assertEquals("个人银行券 李四", pays.get(2).label());
+        assertEquals("个人币 张三", pays.get(1).label());
+        assertEquals("个人币 李四", pays.get(2).label());
         assertFalse(ShopQuotes.offersHardCurrency(pays));
         assertTrue(pays.stream().noneMatch(pay -> "copper".equals(pay.id()) || "diamond".equals(pay.id())));
         assertEquals(3, ShopQuotes.columns(480));
@@ -41,7 +41,7 @@ class ShopQuotesTest {
         assertEquals("sell minecraft:oak_log zhang 4", ShopActions.sell("minecraft:oak_log", "zhang", "4"));
 
         JsonObject bare = new JsonObject();
-        assertEquals(List.of(new ShopQuotes.Pay("note", "银行券")), ShopQuotes.payCurrencies(bare));
+        assertEquals(List.of(new ShopQuotes.Pay("note", "央行券")), ShopQuotes.payCurrencies(bare));
         assertEquals(ShopQuotes.UNAVAILABLE, ShopQuotes.unitPrice(bare, "2", "note"));
         assertFalse(ShopQuotes.shouldPresent(bare));
         bare.addProperty("open", true);
@@ -69,6 +69,14 @@ class ShopQuotesTest {
         assertEquals(ShopLayout.frameH(400, 1), ShopLayout.frameH(400, 1));
     }
 
+    @Test
+    void customCentralNameAndNarrowCatalogAreSupported() {
+        JsonObject data = sample();
+        data.getAsJsonArray("currencies").get(2).getAsJsonObject().addProperty("name", "中央储备券");
+        assertEquals("中央储备券", ShopQuotes.payCurrencies(data).get(0).label());
+        assertEquals(1, ShopQuotes.columns(176));
+    }
+
     private static JsonObject listing(String item, String name, String diamond, String notes, String category) {
         JsonObject row = new JsonObject();
         row.addProperty("item", item);
@@ -86,7 +94,7 @@ class ShopQuotesTest {
         JsonArray currencies = new JsonArray();
         currencies.add(money("copper", "铜锭", null));
         currencies.add(money("diamond", "钻石", null));
-        currencies.add(money("note", "银行券", "1000"));
+        currencies.add(money("note", "央行券", "1000"));
         data.add("currencies", currencies);
         JsonArray notes = new JsonArray();
         notes.add(note("zhang", "张三", "2.5"));

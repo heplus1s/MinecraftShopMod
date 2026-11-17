@@ -87,7 +87,7 @@ public final class FabricBankBridge implements ShopBank {
     public String currencyName() {
         CurrencyDef note = note();
         if (note == null || note.name() == null || note.name().isBlank()) {
-            return "银行券";
+            return "央行券";
         }
         return note.name();
     }

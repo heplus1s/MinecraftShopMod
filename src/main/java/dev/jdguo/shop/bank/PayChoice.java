@@ -10,11 +10,11 @@ import java.util.UUID;
  */
 public record PayChoice(String key, String name, boolean personal, UUID personalId) {
     public static PayChoice note() {
-        return new PayChoice("note", "银行券", false, null);
+        return new PayChoice("note", "央行券", false, null);
     }
 
     public static PayChoice note(String displayName) {
-        String name = displayName == null || displayName.isBlank() ? "银行券" : displayName;
+        String name = displayName == null || displayName.isBlank() ? "央行券" : displayName;
         return new PayChoice("note", name, false, null);
     }
 
