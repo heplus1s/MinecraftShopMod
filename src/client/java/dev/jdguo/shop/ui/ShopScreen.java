@@ -181,7 +181,7 @@ public final class ShopScreen extends Screen {
         if (message != null && !message.isBlank()) {
             context.drawText(textRenderer, textRenderer.trimToWidth(message, this.width - 84), 8, this.height - 28, 0xFFFFCC88, false);
             if (mouseY >= this.height - 32 && mouseX < this.width - 76)
-                context.drawTooltip(textRenderer, textRenderer.wrapLines(Text.literal(message), Math.max(120, this.width - 32)), mouseX, mouseY);
+                context.drawOrderedTooltip(textRenderer, textRenderer.wrapLines(Text.literal(message), Math.max(120, this.width - 32)), mouseX, mouseY);
         }
     }
 
