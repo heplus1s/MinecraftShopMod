@@ -15,6 +15,16 @@ jobs:
         run: python3 scripts/check_embedded_ui.py
       - name: Compile and test core plus client
         run: bash gradlew --no-daemon build
+      - name: Verify real item registry test executed
+        run: |
+          python3 - <<'PYTEST'
+          import xml.etree.ElementTree as ET
+          p = 'build/test-results/test/TEST-dev.jdguo.shop.catalog.VanillaCatalogRegistryTest.xml'
+          r = ET.parse(p).getroot()
+          assert int(r.attrib['tests']) == 1, r.attrib
+          assert all(int(r.attrib.get(k, '0')) == 0 for k in ['failures', 'errors', 'skipped']), r.attrib
+          print('PASS real Minecraft item registry test: 1 executed, 0 skipped, 0 failures')
+          PYTEST
       - name: Verify remapped release jar
         run: python3 scripts/check_release_jar.py
       - uses: actions/upload-artifact@v4
