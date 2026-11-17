@@ -114,10 +114,13 @@ public final class ShopUiClient implements ClientModInitializer {
         if (data == null) return;
         pending = data;
         if(data.has("payoutPreview") && data.get("payoutPreview").isJsonObject()) {
-            awaitingOpen=0; client.setScreen(new ShopPayoutConfirmScreen(data)); return;
+            ShopViewState state = client.currentScreen instanceof ShopScreen screen ? screen.viewState()
+                    : client.currentScreen instanceof ShopPayoutConfirmScreen confirmation ? confirmation.viewState()
+                    : ShopViewState.fromSnapshot(data);
+            awaitingOpen=0; client.setScreen(new ShopPayoutConfirmScreen(data, state)); return;
         }
-        if(client.currentScreen instanceof ShopPayoutConfirmScreen) {
-            client.setScreen(new ShopScreen(data)); return;
+        if(client.currentScreen instanceof ShopPayoutConfirmScreen confirmation) {
+            client.setScreen(ShopScreen.restore(data, confirmation.viewState())); return;
         }
         if (client.currentScreen instanceof ShopScreen screen) {
             screen.show(data);

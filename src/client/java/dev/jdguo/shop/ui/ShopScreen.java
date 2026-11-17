@@ -50,11 +50,20 @@ public final class ShopScreen extends Screen {
     public ShopScreen(JsonObject data) {
         super(Text.literal("商店"));
         this.data = data == null ? new JsonObject() : data;
+        this.currencyId = ShopViewState.fromSnapshot(this.data).currencyId();
+    }
+
+    static ShopScreen restore(JsonObject data, ShopViewState state) {
+        return new ShopScreen(data, state.currencyId(), state.currencyOpen(), state.category(), state.scroll(), state.quantities());
+    }
+
+    ShopViewState viewState() {
+        captureQuantities();
+        return new ShopViewState(currencyId, currencyOpen, category, scroll, quantities);
     }
 
     void show(JsonObject next) {
-        captureQuantities();
-        client.setScreen(new ShopScreen(next == null ? new JsonObject() : next, currencyId, currencyOpen, category, scroll, quantities));
+        client.setScreen(restore(next, viewState()));
     }
 
     ShopScreen(JsonObject data, String currencyId, boolean currencyOpen, String category, int scroll, Map<String, String> quantities) {
@@ -89,22 +98,31 @@ public final class ShopScreen extends Screen {
             category = tabs.isEmpty() ? "" : tabs.get(0);
         }
         int perRow = Math.max(1, ShopLayout.frameW(this.width) / 88);
-        int tabRows = tabs.isEmpty() ? 1 : (tabs.size() + perRow - 1) / perRow;
+        int maxRows = Math.max(1, Math.min(2, (this.height - 144) / 22));
+        int perPage = perRow * maxRows;
+        int categoryPage = Math.max(0, tabs.indexOf(category)) / perPage;
+        int categoryPages = Math.max(1, (tabs.size() + perPage - 1) / perPage);
+        int firstTab = categoryPage * perPage;
+        List<String> pageTabs = tabs.subList(Math.min(firstTab, tabs.size()), Math.min(firstTab + perPage, tabs.size()));
+        int tabRows = Math.max(1, (pageTabs.size() + perRow - 1) / perRow);
         frameX = ShopLayout.frameX(this.width);
-        frameY = ShopLayout.frameY(tabRows);
+        frameY = ShopLayout.frameY(tabRows + 1);
         frameW = ShopLayout.frameW(this.width);
-        frameH = ShopLayout.frameH(this.height, tabRows);
+        frameH = ShopLayout.frameH(this.height, tabRows + 1);
+        addDrawableChild(ButtonWidget.builder(Text.literal("‹"), b -> chooseTab(tabs.get(Math.max(0, categoryPage - 1) * perPage)))
+                .dimensions(frameX, 8, 22, 18).build()).active = categoryPage > 0;
+        addDrawableChild(ButtonWidget.builder(Text.literal("分类 " + (categoryPage + 1) + "/" + categoryPages), b -> {})
+                .dimensions(frameX + 26, 8, Math.max(28, frameW - 52), 18).build()).active = false;
+        addDrawableChild(ButtonWidget.builder(Text.literal("›"), b -> chooseTab(tabs.get(Math.min(categoryPages - 1, categoryPage + 1) * perPage)))
+                .dimensions(frameX + frameW - 22, 8, 22, 18).build()).active = categoryPage + 1 < categoryPages;
         int tabX = frameX;
-        int tabY = 8;
+        int tabY = 30;
         int shown = 0;
-        for (String tab : tabs) {
-            if (shown > 0 && shown % perRow == 0) {
-                tabX = frameX;
-                tabY += 22;
-            }
+        for (String tab : pageTabs) {
+            if (shown > 0 && shown % perRow == 0) { tabX = frameX; tabY += 22; }
             String name = tab;
             int width = Math.min(84, frameW);
-            addDrawableChild(ButtonWidget.builder(Text.literal(textRenderer.trimToWidth(name, width - 8)), button -> chooseTab(name))
+            addDrawableChild(ButtonWidget.builder(Text.literal(textRenderer.trimToWidth((name.equals(category) ? "▶ " : "") + name, width - 8)), button -> chooseTab(name))
                     .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal(name)))
                     .dimensions(tabX, tabY, width, 18).build());
             tabX += width + 4;
@@ -131,6 +149,12 @@ public final class ShopScreen extends Screen {
             addDrawableChild(field);
             quantityFields.add(new QuantityBox(item.id(), field));
             String itemId = item.id();
+            if (!ShopQuotes.systemTradeEnabled(data, itemId)) {
+                addDrawableChild(ButtonWidget.builder(Text.literal("仅市场挂牌"), button -> {})
+                        .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("该商品系统买卖已关闭，仍可在玩家市场挂牌")))
+                        .dimensions(cellX + 46, cellY + 48, 76, 18).build()).active = false;
+                continue;
+            }
             addDrawableChild(ButtonWidget.builder(Text.literal("买入"), button -> trade(true, itemId, field))
                     .dimensions(cellX + 46, cellY + 48, 36, 18).build());
             addDrawableChild(ButtonWidget.builder(Text.literal("卖出"), button -> trade(false, itemId, field))
@@ -156,7 +180,7 @@ public final class ShopScreen extends Screen {
         }
         if(!buy && currencyId.startsWith("personal:")
                 && !"true".equals(ShopQuotes.text(data,"issuerPayoutPreview"))) {
-            notice="服务器未提供组合收款确认，请升级服务端；本次未执行。";
+            notice="服务器未提供个人币收款确认，请升级服务端；本次未执行。";
             return;
         }
         boolean explicitCurrency = "true".equals(ShopQuotes.text(data, "explicitCurrency"));
@@ -170,13 +194,21 @@ public final class ShopScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context);
-        context.drawText(textRenderer, "商店", 8, this.height - 42, 0xFFD0B060, false);
+        context.drawText(textRenderer, "商店 · 单笔上限 " + (ShopQuotes.text(data,"maxCount") == null ? "以服务器为准" : ShopQuotes.text(data,"maxCount")), 8, this.height - 42, 0xFFD0B060, false);
         drawCatalog(context);
         super.render(context, mouseX, mouseY, delta);
         if (drawer != null) {
             drawer.render(context, mouseX, mouseY, delta);
         }
         frame(context, frameX, frameY, frameX + frameW, frameY + frameH);
+        if (mouseX >= frameX && mouseX < frameX + frameW && mouseY >= frameY && mouseY < frameY + frameH) {
+            int rowOffset = (mouseY - frameY - 4 + scroll) % CELL;
+            if (rowOffset >= 20 && rowOffset < 44) {
+                context.drawOrderedTooltip(textRenderer, textRenderer.wrapLines(
+                        Text.literal("仅参考：静态估算为当前参考价乘数量，未计买卖差价和逐件价格变化。实际成交由服务器逐件计价；个人币收款确认页显示实际报价。"),
+                        Math.max(120, Math.min(300, width - 32))), mouseX, mouseY);
+            }
+        }
         String message = notice.isBlank() ? ShopQuotes.text(data, "message") : notice;
         if (message != null && !message.isBlank()) {
             context.drawText(textRenderer, textRenderer.trimToWidth(message, this.width - 84), 8, this.height - 28, 0xFFFFCC88, false);
@@ -283,8 +315,8 @@ public final class ShopScreen extends Screen {
             int color = ShopQuotes.UNAVAILABLE.equals(price) ? 0xFFAAAAAA : 0xFFE8D090;
             String quantity = quantityOf(item.id());
             String total = ShopQuotes.total(price, quantity);
-            context.drawText(textRenderer, textRenderer.trimToWidth("单价：" + price, cellW - 4), cellX, cellY + 20, color, false);
-            context.drawText(textRenderer, textRenderer.trimToWidth("合计：" + total, cellW - 4), cellX, cellY + 32, color, false);
+            context.drawText(textRenderer, textRenderer.trimToWidth("参考单价：" + price, cellW - 4), cellX, cellY + 20, color, false);
+            context.drawText(textRenderer, textRenderer.trimToWidth("静态估算：" + total, cellW - 4), cellX, cellY + 32, color, false);
         }
         context.disableScissor();
     }

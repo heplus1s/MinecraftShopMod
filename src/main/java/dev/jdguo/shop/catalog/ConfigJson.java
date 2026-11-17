@@ -26,6 +26,7 @@ public final class ConfigJson {
             row.addProperty("item", entry.itemId());
             row.addProperty("name", entry.name());
             row.addProperty("anchorDiamonds", plain(entry.anchorDiamonds()));
+            row.addProperty("systemTradeEnabled", entry.systemTradeEnabled());
             catalog.add(row);
         }
         root.add("catalog", catalog);
@@ -53,11 +54,15 @@ public final class ConfigJson {
             String item = text(row.get("item")).toLowerCase();
             String name = text(row.get("name"));
             BigDecimal anchor = new BigDecimal(text(row.get("anchorDiamonds")));
-            catalog.add(new CatalogEntry(item, name, anchor));
+            catalog.add(new CatalogEntry(item, name, anchor, !row.has("systemTradeEnabled") || row.get("systemTradeEnabled").getAsBoolean()));
         }
         // One-time versioned addition: keep existing custom entries and all their prices.
         if (!root.has("catalogVersion") || root.get("catalogVersion").getAsInt() < 2) {
             for (CatalogEntry entry : ShopConfig.equipmentCatalog())
+                if (catalog.stream().noneMatch(old -> old.itemId().equals(entry.itemId()))) catalog.add(entry);
+        }
+        if (!root.has("catalogVersion") || root.get("catalogVersion").getAsInt() < 3) {
+            for (CatalogEntry entry : ShopConfig.catalogV3Additions())
                 if (catalog.stream().noneMatch(old -> old.itemId().equals(entry.itemId()))) catalog.add(entry);
         }
         ShopConfig config = new ShopConfig(step, floor, maxCount, pageSize, catalog, spread);
@@ -82,7 +87,7 @@ public final class ConfigJson {
 
     private static String pretty(JsonObject root) {
         StringBuilder out = new StringBuilder();
-        out.append("{\n  \"catalogVersion\": 2,\n");
+        out.append("{\n  \"catalogVersion\": 3,\n");
         out.append("  \"stepFraction\": \"").append(root.get("stepFraction").getAsString()).append("\",\n");
         out.append("  \"spreadFraction\": \"").append(root.get("spreadFraction").getAsString()).append("\",\n");
         out.append("  \"minDiamondPrice\": \"").append(root.get("minDiamondPrice").getAsString()).append("\",\n");
@@ -95,7 +100,7 @@ public final class ConfigJson {
             out.append("    {\"item\": \"").append(row.get("item").getAsString())
                     .append("\", \"name\": \"").append(escape(row.get("name").getAsString()))
                     .append("\", \"anchorDiamonds\": \"").append(row.get("anchorDiamonds").getAsString())
-                    .append("\"}");
+                    .append("\", \"systemTradeEnabled\": ").append(row.get("systemTradeEnabled").getAsBoolean()).append("}");
             if (i + 1 < catalog.size()) {
                 out.append(',');
             }

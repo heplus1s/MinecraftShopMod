@@ -57,7 +57,7 @@ public final class TradeDesk {
         ShopTradeResult recovery = recoverPending(session, purse, player);
         if (recovery != null) return recovery;
         if (pay != null && pay.personal()) {
-            return ShopTradeResult.fail("payout_confirmation_required", "个人币收款需要先预览并确认私币与央行券的组合，尚未收取物品。");
+            return ShopTradeResult.fail("payout_confirmation_required", "个人币收款需要先预览并确认实收金额，尚未收取物品。");
         }
         Prepared prepared = prepare(session, itemId, count, false, pay, true);
         if (prepared.tradeFailure != null) {
@@ -80,14 +80,30 @@ public final class TradeDesk {
         if (quote == null || !quote.has("success") || !quote.get("success").getAsBoolean()) return null;
         for (String field : List.of("fingerprint", "privateAmount", "issuerProceeds", "centralRemainder", "unitPrice"))
             if (!quote.has(field) || quote.get(field).isJsonNull()) return null;
+        // Never silently fall back to central notes, including against an older bank jar.
+        if (quote.get("privateAmount").getAsBigDecimal().signum() <= 0
+                || quote.get("centralRemainder").getAsBigDecimal().signum() != 0) return null;
         return new PrivatePayoutPlan(itemId, base.entry.name(), count, pay, base.charge, base.basePrice, base.path.end(), quote.toString());
+    }
+
+    /** Explanation only; all posting still goes through a fresh bound preview. */
+    public static String privatePayoutUnavailable(ShopSession session, String itemId, int count, PayChoice pay) {
+        Prepared base = prepare(session, itemId, count, false, PayChoice.note(), false);
+        if (base.early != null) return base.early.message();
+        if (base.charge == null || base.charge.signum() <= 0) return "当前商品没有有效收购价，未收取物品。";
+        BigDecimal balance = session.bank().operatingBalance(PayChoice.note());
+        if (balance == null || balance.compareTo(base.charge) < 0) return "商店经营账户资金不足，未收取物品。";
+        var quote = session.bank().quoteIssuerPayout(pay.personalId(), base.charge);
+        if (quote != null && quote.has("message") && !quote.get("message").isJsonNull()
+                && !quote.get("message").getAsString().isBlank()) return quote.get("message").getAsString();
+        return "当前个人币挂单或金额精度不支持本次全额付款；请调整数量或另选收款币种。不会自动改付央行券，未收取物品。";
     }
 
     public static ShopTradeResult sellConfirmed(ShopSession session, ItemPurse purse, UUID player, PrivatePayoutPlan plan) {
         ShopTradeResult recovery = recoverPending(session, purse, player);
         if (recovery != null) return recovery;
         PrivatePayoutPlan current = quotePrivatePayout(session, plan.itemId(), plan.count(), plan.currency());
-        if (!plan.same(current)) return ShopTradeResult.fail("payout_quote_changed", "报价或付款组合已经变化，请重新预览确认。");
+        if (!plan.same(current)) return ShopTradeResult.fail("payout_quote_changed", "报价或收款金额已经变化，请重新预览确认。");
         if (purse.plainCount(plan.itemId()) < plan.count())
             return ShopTradeResult.fail("not_enough_items", "可出售物品不足，尚未结算。");
         TradeJournal.Result result = TradeJournal.beginIssuerPayout(session, purse, player, plan);
@@ -165,11 +181,16 @@ public final class TradeDesk {
         BigDecimal balance = bank.playerBalance(player, prepared.pay);
         String message = buying
                 ? ShopText.bought(prepared.entry.name(), prepared.count, prepared.currency, due,
-                prepared.path.end(), prepared.entry.anchorDiamonds(), balance)
+                converted(prepared.path.end(), bank, prepared.pay), converted(prepared.entry.anchorDiamonds(), bank, prepared.pay), balance)
                 : ShopText.sold(prepared.entry.name(), prepared.count, prepared.currency, due,
-                prepared.path.end(), prepared.entry.anchorDiamonds(), balance);
+                converted(prepared.path.end(), bank, prepared.pay), converted(prepared.entry.anchorDiamonds(), bank, prepared.pay), balance);
         return new ShopTradeResult(true, "ok", message, prepared.itemId, prepared.entry.name(), prepared.count,
                 prepared.lookup.diamondEach(), prepared.path.total(), prepared.path.end(), due);
+    }
+
+    private static BigDecimal converted(BigDecimal diamonds, ShopBank bank, PayChoice pay) {
+        BigDecimal rate = rate(bank, pay);
+        return diamonds == null || rate == null ? null : diamonds.multiply(rate);
     }
 
     private static Prepared prepare(ShopSession session, String itemId, int count, boolean buying,
@@ -199,6 +220,8 @@ public final class TradeDesk {
             return stop(prepared, "no_quote", ShopText.noQuote(), forTrade);
         }
         prepared.entry = entry;
+        if (!entry.systemTradeEnabled())
+            return stop(prepared, "catalog_only", "该商品的系统买卖已关闭；仍可在玩家市场挂牌，管理员可调整交易开关。", forTrade);
         PriceBook.Lookup lookup = session.book().lookup(config, prepared.itemId);
         prepared.basePrice = lookup.diamondEach();
         prepared.lookup = lookup;

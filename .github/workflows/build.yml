@@ -15,12 +15,22 @@ jobs:
         run: python3 scripts/check_embedded_ui.py
       - name: Compile and test core plus client
         run: bash gradlew --no-daemon build
+      - name: Verify real item registry test executed
+        run: |
+          python3 - <<'PYTEST'
+          import xml.etree.ElementTree as ET
+          p = 'build/test-results/test/TEST-dev.jdguo.shop.catalog.VanillaCatalogRegistryTest.xml'
+          r = ET.parse(p).getroot()
+          assert int(r.attrib['tests']) == 1, r.attrib
+          assert all(int(r.attrib.get(k, '0')) == 0 for k in ['failures', 'errors', 'skipped']), r.attrib
+          print('PASS real Minecraft item registry test: 1 executed, 0 skipped, 0 failures')
+          PYTEST
       - name: Verify remapped release jar
         run: python3 scripts/check_release_jar.py
       - uses: actions/upload-artifact@v4
         with:
           name: integrated-mod-jars
-          path: build/libs/shopmod-1.0.6.jar
+          path: build/libs/shopmod-1.0.7.jar
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
@@ -38,8 +48,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v1.0.6 >/dev/null 2>&1; then
-            echo "Release v1.0.6 already exists; refusing to replace it."
+          if gh release view v1.0.7 >/dev/null 2>&1; then
+            echo "Release v1.0.7 already exists; refusing to replace it."
             exit 1
           fi
-          gh release create v1.0.6 release-jars/shopmod-1.0.6.jar --target "$GITHUB_SHA" --title "v1.0.6 工具武器交易与市场联通" --notes-file RELEASE_NOTES_1.0.6.md
+          gh release create v1.0.7 release-jars/shopmod-1.0.7.jar --target "$GITHUB_SHA" --title "v1.0.7 工具武器交易与市场联通" --notes-file RELEASE_NOTES_1.0.7.md

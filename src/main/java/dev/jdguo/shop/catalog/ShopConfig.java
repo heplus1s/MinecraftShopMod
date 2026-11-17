@@ -41,7 +41,7 @@ public final class ShopConfig {
     }
 
     public static ShopConfig defaults() {
-        return new ShopConfig(new BigDecimal("0.002"), new BigDecimal("0.000000001"), 64, 8, defaultCatalog());
+        return new ShopConfig(new BigDecimal("0.002"), new BigDecimal("0.000000001"), 100, 8, defaultCatalog());
     }
 
     public void validate() {
@@ -91,7 +91,7 @@ public final class ShopConfig {
         boolean found = false;
         for (CatalogEntry entry : catalog) {
             if (entry.itemId().equals(itemId)) {
-                next.add(new CatalogEntry(entry.itemId(), entry.name(), anchor));
+                next.add(new CatalogEntry(entry.itemId(), entry.name(), anchor, entry.systemTradeEnabled()));
                 found = true;
             } else {
                 next.add(entry);
@@ -100,6 +100,20 @@ public final class ShopConfig {
         if (!found) {
             throw new IllegalArgumentException("Unknown item: " + itemId);
         }
+        ShopConfig config = new ShopConfig(stepFraction, minDiamondPrice, maxCount, pageSize, next, spreadFraction);
+        config.validate();
+        return config;
+    }
+
+    public ShopConfig withMaxCount(int count) {
+        ShopConfig next = new ShopConfig(stepFraction, minDiamondPrice, count, pageSize, catalog, spreadFraction);
+        next.validate(); return next;
+    }
+
+    public ShopConfig withSystemTrading(String itemId, boolean enabled) {
+        if (entry(itemId) == null) throw new IllegalArgumentException("Unknown item: " + itemId);
+        List<CatalogEntry> next = catalog.stream().map(e -> e.itemId().equals(itemId)
+                ? new CatalogEntry(e.itemId(), e.name(), e.anchorDiamonds(), enabled) : e).toList();
         ShopConfig config = new ShopConfig(stepFraction, minDiamondPrice, maxCount, pageSize, next, spreadFraction);
         config.validate();
         return config;
@@ -133,7 +147,7 @@ public final class ShopConfig {
      * Starting diamond-equivalents. These compare rough in-game gathering difficulty with one diamond.
      * They are not a claim about the right long-run price. After the first trade, the world save wins.
      */
-    private static List<CatalogEntry> defaultCatalog() {
+    private static List<CatalogEntry> baseCatalog() {
         List<CatalogEntry> list = new ArrayList<>();
         list.add(item("minecraft:dirt", "泥土", "0.0004"));
         list.add(item("minecraft:sand", "沙子", "0.0005"));
@@ -198,6 +212,18 @@ public final class ShopConfig {
         list.add(item("minecraft:enchanted_golden_apple", "附魔金苹果", "36"));
         list.addAll(equipmentCatalog());
         return list;
+    }
+
+    private static List<CatalogEntry> defaultCatalog() {
+        List<CatalogEntry> list = new ArrayList<>(baseCatalog());
+        list.addAll(catalogV3Additions());
+        return list;
+    }
+
+    /** Only new IDs are migrated, so an administrator's removed v2 items stay removed. */
+    public static List<CatalogEntry> catalogV3Additions() {
+        var previous = baseCatalog().stream().map(CatalogEntry::itemId).collect(java.util.stream.Collectors.toSet());
+        return ExpandedCatalog.entries().stream().filter(entry -> !previous.contains(entry.itemId())).toList();
     }
 
     /** New catalog generation. Prices are explicit diamond anchors, never invented market fills. */

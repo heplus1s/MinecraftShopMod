@@ -95,7 +95,7 @@ public final class ShopUiNetwork {
         }
         if("payout_cancel".equals(action)) {
             dev.jdguo.shop.ui.ShopPayoutPreviews.cancel(player.getUuid());
-            sync(player,shownPage,"已取消组合付款预览，未执行交易。");return;
+            sync(player,shownPage,"已取消个人币收款预览，未执行交易。");return;
         }
         PayChoice pay = currency == null ? ShopChestUiHooks.payer(player) : currency(currency);
         if (pay == null) {
@@ -115,7 +115,7 @@ public final class ShopUiNetwork {
             case "sell" -> {
                 if(pay.personal()) {
                     var preview=ShopChestUiHooks.previewPayout(player,itemId,count,pay);
-                    sync(player,shownPage,preview==null?"暂无可执行组合报价，请检查央行券资金或发行人挂单。":"请核对组合收款，确认后才收取商品。",preview);
+                    sync(player,shownPage,preview==null?dev.jdguo.shop.trade.TradeDesk.privatePayoutUnavailable(ShopRuntime.session(),itemId,count,pay):"请核对个人币收款，确认后才收取商品。",preview);
                     break;
                 }
                 ShopTradeResult result = ShopChestUiHooks.sell(player, itemId, count, pay);

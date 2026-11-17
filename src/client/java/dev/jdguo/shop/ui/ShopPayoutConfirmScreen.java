@@ -10,23 +10,25 @@ import java.util.List;
 
 /** Read-only composition preview; only the bound quote token is sent back. */
 final class ShopPayoutConfirmScreen extends Screen {
+    private final ShopViewState state;
     private final JsonObject snapshot;
     private final JsonObject preview;
     private List<OrderedText> lines=List.of();
     private int left, panelWidth, scroll, top=46, bottom;
     private boolean submitted;
-    ShopPayoutConfirmScreen(JsonObject data) {
-        super(Text.literal("确认组合收款")); snapshot=data; preview=data.getAsJsonObject("payoutPreview");
+    ShopPayoutConfirmScreen(JsonObject data, ShopViewState state) {
+        super(Text.literal("确认个人币收款")); this.state=state; snapshot=data; preview=data.getAsJsonObject("payoutPreview");
     }
+    ShopViewState viewState() { return state; }
     @Override protected void init() {
         panelWidth=Math.max(80,Math.min(440,width-16)); left=(width-panelWidth)/2;
         bottom=Math.max(top+9,height-54);
         String message=ShopQuotes.text(snapshot,"message");
         String description=preview.get("description").getAsString();
         lines=textRenderer.wrapLines(Text.literal((message==null?"":message+"\n\n")+description
-                +"\n\n报价有效期 30 秒。组合或价格变化会要求重新确认。"),panelWidth-16);
+                +"\n\n以上实收为服务器逐件计价后的实际报价，不是商品卡静态估算。\n报价有效期 30 秒。收款金额或价格变化会要求重新确认。"),panelWidth-16);
         int buttonWidth=Math.max(28,(panelWidth-8)/2);
-        addDrawableChild(ButtonWidget.builder(Text.literal("确认收取上述组合"),b->{
+        addDrawableChild(ButtonWidget.builder(Text.literal("确认收款"),b->{
             if(submitted)return; submitted=true; b.active=false;
             ShopUiClient.confirmPayout(preview.get("quoteId").getAsString());
         }).dimensions(left,height-30,buttonWidth,20).build());
@@ -50,6 +52,6 @@ final class ShopPayoutConfirmScreen extends Screen {
     @Override public void close() {
         // If confirmation was already sent, cancellation cannot undo that accepted order.
         if(!submitted)ShopUiClient.cancelPayout();
-        client.setScreen(new ShopScreen(snapshot));
+        client.setScreen(ShopScreen.restore(snapshot, state));
     }
 }
