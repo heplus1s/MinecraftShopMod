@@ -32,13 +32,18 @@ public final class ShopQuotes {
     /** 银行券 first, then one slot for each personal note on the snapshot. */
     public static List<Pay> payCurrencies(JsonObject data) {
         List<Pay> rows = new ArrayList<>();
-        rows.add(new Pay(NOTE, "银行券"));
+        String centralName = "央行券";
+        for (JsonObject currency : array(data, "currencies")) {
+            if (NOTE.equals(text(currency,"id")) && text(currency,"name") != null && !text(currency,"name").isBlank())
+                centralName = text(currency,"name");
+        }
+        rows.add(new Pay(NOTE, centralName));
         for (JsonObject note : array(data, "notes")) {
             String name = text(note, "name");
             if (name == null || hard(text(note, "id"), name)) {
                 continue;
             }
-            rows.add(new Pay(personalId(note, name), "个人银行券 " + name));
+            rows.add(new Pay(personalId(note, name), "个人币 " + name));
         }
         return rows;
     }
@@ -103,7 +108,7 @@ public final class ShopQuotes {
     }
 
     public static int columns(int contentWidth) {
-        return contentWidth >= 460 ? 3 : 2;
+        return Math.max(1, Math.min(3, (contentWidth - 8) / 142));
     }
 
     /**

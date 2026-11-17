@@ -45,7 +45,7 @@ class TradeDeskTest {
         assertTrue(saves.get() >= 2, "intent and completion must both persist");
         assertTrue(book.lookup(session.config(), DIAMOND).diamondEach().compareTo(BigDecimal.ONE) > 0);
         assertTrue(result.message().contains("钻石等值"));
-        assertTrue(result.message().contains("银行券"));
+        assertTrue(result.message().contains("央行券"));
         assertFalse(result.message().contains("FX"));
     }
 

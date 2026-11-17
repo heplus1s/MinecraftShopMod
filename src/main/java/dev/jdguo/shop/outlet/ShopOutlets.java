@@ -44,8 +44,10 @@ public final class ShopOutlets {
                 }
                 return 1;
             }));
-            dispatcher.register(literal("shop").then(outlet).then(literal("ui").executes(ctx -> {
-                ShopChestScreen.open(ctx.getSource().getPlayerOrThrow());
+            dispatcher.register(literal("shop").then(outlet).then(literal("chest").executes(ctx -> {
+                ShopChestScreen.open(ctx.getSource().getPlayerOrThrow()); return 1;
+            })).then(literal("ui").executes(ctx -> {
+                dev.jdguo.shop.net.ShopUiNetwork.open(ctx.getSource().getPlayerOrThrow());
                 return 1;
             })));
         });
@@ -67,7 +69,7 @@ public final class ShopOutlets {
     private static ActionResult open(ServerPlayerEntity player, ShopOutlet o) {
         if (!player.getWorld().getRegistryKey().getValue().toString().equals(o.dimension()) || player.squaredDistanceTo(o.x()+0.5,o.y()+1,o.z()+0.5)>36) return ActionResult.FAIL;
         if (player.getWorld().getBlockState(new BlockPos(o.x(),o.y(),o.z())).isAir()) return ActionResult.FAIL;
-        ShopChestScreen.open(player); return ActionResult.SUCCESS;
+        dev.jdguo.shop.net.ShopUiNetwork.open(player); return ActionResult.SUCCESS;
     }
     private static int set(ServerCommandSource source,String name) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayerEntity player=source.getPlayerOrThrow(); HitResult hit=player.raycast(5,0,false);

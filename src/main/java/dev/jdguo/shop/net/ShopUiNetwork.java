@@ -74,6 +74,16 @@ public final class ShopUiNetwork {
         });
     }
 
+    /** Prefer the optional screen only after a compatible client has negotiated it. */
+    public static void open(ServerPlayerEntity player) {
+        if (sessions.contains(player.getUuid()) && ServerPlayNetworking.canSend(player, SYNC)) {
+            player.closeHandledScreen();
+            sync(player, 1, "", null, true);
+        } else {
+            dev.jdguo.shop.ui.ShopChestScreen.open(player);
+        }
+    }
+
     private static void handle(ServerPlayerEntity player, String action, String itemId, int count, int page, String currency) {
         if (!sessions.contains(player.getUuid())) {
             return;
@@ -135,18 +145,32 @@ public final class ShopUiNetwork {
         sync(player,page,message,null);
     }
     private static void sync(ServerPlayerEntity player, int page, String message, dev.jdguo.shop.ui.ShopPayoutPreviews.Preview preview) {
-        if (!ServerPlayNetworking.canSend(player, SYNC)) {
-            return;
+        sync(player, page, message, preview, false);
+    }
+    private static void sync(ServerPlayerEntity player, int page, String message,
+                             dev.jdguo.shop.ui.ShopPayoutPreviews.Preview preview, boolean open) {
+        if (!ServerPlayNetworking.canSend(player, SYNC)) return;
+        // Send bounded pages, then let the client publish the complete catalog atomically.
+        // Sending page one alone made every category beyond that page unreachable.
+        String batch = UUID.randomUUID().toString();
+        int pages = ShopChestUiHooks.pages();
+        for (int current = 1; current <= pages; current++) {
+            var snapshot = com.google.gson.JsonParser.parseString(ShopUiSnapshot.json(player,current,message)).getAsJsonObject();
+            snapshot.addProperty("catalogBatch", batch);
+            snapshot.addProperty("open", open);
+            snapshot.addProperty("issuerPayoutPreview",true);
+            if(preview!=null)snapshot.add("payoutPreview",preview.json());
+            String json = snapshot.toString();
+            if (json.length() > 32000) {
+                // Never publish a truncated catalog as though it were complete.
+                json = "{\"protocol\":1,\"open\":" + open + ",\"message\":\"[商店] 目录数据过长，请使用 /shop chest。\",\"listings\":[]}";
+                var buf = PacketByteBufs.create(); buf.writeString(json,32767);
+                ServerPlayNetworking.send(player,SYNC,buf);
+                return;
+            }
+            PacketByteBuf buf = PacketByteBufs.create();
+            buf.writeString(json, 32767);
+            ServerPlayNetworking.send(player, SYNC, buf);
         }
-        PacketByteBuf buf = PacketByteBufs.create();
-        com.google.gson.JsonObject snapshot=com.google.gson.JsonParser.parseString(ShopUiSnapshot.json(player,page,message)).getAsJsonObject();
-        snapshot.addProperty("issuerPayoutPreview",true);
-        if(preview!=null)snapshot.add("payoutPreview",preview.json());
-        String json = snapshot.toString();
-        if (json.length() > 32000) {
-            json = "{\"protocol\":1,\"message\":\"[商店] 目录太长，请用指令查询。\",\"listings\":[]}";
-        }
-        buf.writeString(json, 32767);
-        ServerPlayNetworking.send(player, SYNC, buf);
     }
 }

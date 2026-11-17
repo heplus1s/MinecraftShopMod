@@ -53,15 +53,15 @@ public final class ShopText {
     }
 
     public static String hardCurrency() {
-        return "铜锭和钻石不能作为商店货款。请选择银行券，或选择一种个人银行券。一笔订单只用一种货币。";
+        return "铜锭和钻石不能作为商店货款。请选择央行券，或选择一种个人币。一笔订单只用一种货币。";
     }
 
     public static String personalMissing() {
-        return "没有找到这个名字的个人银行券。";
+        return "没有找到这个名字的个人币。";
     }
 
     public static String personalUnpriced() {
-        return "这张个人银行券暂无牌价，不能选作结算货币。";
+        return "这张个人币暂无牌价，不能选作结算货币。";
     }
 
     public static String currencyNow(String name) {
@@ -116,7 +116,7 @@ public final class ShopText {
     }
 
     public static String fxUnavailable() {
-        return "中央银行暂时不能提供银行券对钻石的汇率，这笔交易无法换算。";
+        return "中央银行暂时不能提供央行券对钻石的汇率，这笔交易无法换算。";
     }
 
     public static String insufficientFunds(String currency, BigDecimal need, BigDecimal have) {
@@ -250,7 +250,7 @@ public final class ShopText {
                 .append("，单次数量上限 ").append(config.maxCount()).append("。");
         text.append("\n价格下限 ").append(MoneyScale.display(config.minDiamondPrice()))
                 .append(" 钻石等值，只用于防止价格变成零，不是起点。");
-        text.append("\n买卖按四位小数记账。玩家选择银行券或一种个人银行券，一笔订单只用这一种。铜锭和钻石不能付货款。余额不够则整笔拒绝。");
+        text.append("\n买卖按四位小数记账。玩家选择央行券或一种个人币，一笔订单只用这一种。铜锭和钻石不能付货款。余额不够则整笔拒绝。");
         text.append("\n配置文件 config/shopmod.json。成交价写在世界存档的 data 目录，升级时保留。");
         if (!bank.modLoaded()) {
             text.append("\n中央银行没有加载，买卖不能入账。钻石等值价格仍可查询。");
@@ -260,7 +260,7 @@ public final class ShopText {
             text.append("\n中央银行已加载，结算货币为").append(currency).append("。");
             var note = dev.jdguo.shop.bank.PayChoice.note(currency);
             if (bank.unitsPerDiamond(note) == null) {
-                text.append("\n银行券对钻石的汇率暂时无法报价。");
+                text.append("\n央行券对钻石的汇率暂时无法报价。");
             } else {
                 text.append("\n每个钻石合").append(currency).append(" ")
                         .append(MoneyScale.display(bank.unitsPerDiamond(note))).append("。");
@@ -287,7 +287,7 @@ public final class ShopText {
             }
         }
         text.append("\n本商店不使用发行准备金、个人发行金库和土地出让账户。土地出让账户属于服务器土地出售。");
-        text.append("\n银行券的发行、兑现和票据往来仍由中央银行处理，商店不另行办理。");
+        text.append("\n央行券的发行、兑现和票据往来仍由中央银行处理，商店不另行办理。");
         return text.toString();
     }
 
@@ -307,7 +307,7 @@ public final class ShopText {
 
     public static String currency(ShopBank bank) {
         if (bank == null || bank.currencyName() == null || bank.currencyName().isBlank()) {
-            return "银行券";
+            return "央行券";
         }
         return bank.currencyName();
     }

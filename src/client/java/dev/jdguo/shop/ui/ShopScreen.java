@@ -88,7 +88,7 @@ public final class ShopScreen extends Screen {
         if (tabs.stream().noneMatch(tab -> tab.equals(category))) {
             category = tabs.isEmpty() ? "" : tabs.get(0);
         }
-        int perRow = Math.max(1, ShopLayout.frameW(this.width) / 72);
+        int perRow = Math.max(1, ShopLayout.frameW(this.width) / 88);
         int tabRows = tabs.isEmpty() ? 1 : (tabs.size() + perRow - 1) / perRow;
         frameX = ShopLayout.frameX(this.width);
         frameY = ShopLayout.frameY(tabRows);
@@ -103,15 +103,16 @@ public final class ShopScreen extends Screen {
                 tabY += 22;
             }
             String name = tab;
-            int width = Math.min(88, Math.max(36, textRenderer.getWidth(name) + 12));
-            addDrawableChild(ButtonWidget.builder(Text.literal(name), button -> chooseTab(name))
+            int width = Math.min(84, frameW);
+            addDrawableChild(ButtonWidget.builder(Text.literal(textRenderer.trimToWidth(name, width - 8)), button -> chooseTab(name))
+                    .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal(name)))
                     .dimensions(tabX, tabY, width, 18).build());
             tabX += width + 4;
             shown++;
         }
         List<ShopQuotes.Item> items = visibleItems();
         int columns = ShopQuotes.columns(frameW);
-        int content = ((items.size() + columns - 1) / columns) * CELL;
+        int content = ((items.size() + columns - 1) / columns) * CELL + 8;
         scroll = Math.min(scroll, Math.max(0, content - frameH));
         int cellW = Math.max(40, (frameW - 8) / columns);
         for (int index = 0; index < items.size(); index++) {
@@ -119,7 +120,7 @@ public final class ShopScreen extends Screen {
             int row = index / columns;
             int cellX = frameX + 4 + col * cellW;
             int cellY = frameY + 4 + row * CELL - scroll;
-            if (cellY < frameY || cellY + CELL > frameY + frameH || cellX + 122 > frameX + frameW - 4) {
+            if (cellY < frameY || cellY + 68 > frameY + frameH || cellX + 122 > frameX + frameW - 4) {
                 continue;
             }
             ShopQuotes.Item item = items.get(index);
@@ -176,8 +177,11 @@ public final class ShopScreen extends Screen {
             drawer.render(context, mouseX, mouseY, delta);
         }
         frame(context, frameX, frameY, frameX + frameW, frameY + frameH);
-        if (!notice.isBlank()) {
-            context.drawText(textRenderer, notice, 8, this.height - 44, 0xFFFFCC88, false);
+        String message = notice.isBlank() ? ShopQuotes.text(data, "message") : notice;
+        if (message != null && !message.isBlank()) {
+            context.drawText(textRenderer, textRenderer.trimToWidth(message, this.width - 84), 8, this.height - 28, 0xFFFFCC88, false);
+            if (mouseY >= this.height - 32 && mouseX < this.width - 76)
+                context.drawOrderedTooltip(textRenderer, textRenderer.wrapLines(Text.literal(message), Math.max(120, this.width - 32)), mouseX, mouseY);
         }
     }
 
@@ -274,13 +278,13 @@ public final class ShopScreen extends Screen {
             }
             ShopQuotes.Item item = items.get(index);
             context.drawItem(icon(item.id()), cellX, cellY + 2);
-            context.drawText(textRenderer, item.name(), cellX + 20, cellY + 6, 0xFFE8E8E8, false);
+            context.drawText(textRenderer, textRenderer.trimToWidth(item.name(), cellW - 24), cellX + 20, cellY + 6, 0xFFE8E8E8, false);
             String price = ShopQuotes.due(data, item, currencyId);
             int color = ShopQuotes.UNAVAILABLE.equals(price) ? 0xFFAAAAAA : 0xFFE8D090;
             String quantity = quantityOf(item.id());
             String total = ShopQuotes.total(price, quantity);
-            context.drawText(textRenderer, "单价：" + price, cellX, cellY + 20, color, false);
-            context.drawText(textRenderer, "合计：" + total, cellX, cellY + 32, color, false);
+            context.drawText(textRenderer, textRenderer.trimToWidth("单价：" + price, cellW - 4), cellX, cellY + 20, color, false);
+            context.drawText(textRenderer, textRenderer.trimToWidth("合计：" + total, cellW - 4), cellX, cellY + 32, color, false);
         }
         context.disableScissor();
     }
@@ -314,11 +318,13 @@ public final class ShopScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (drawer != null && drawer.isMouseOver(mouseX, mouseY) && drawer.mouseClicked(mouseX, mouseY, button)) {
             if (drawer.pollToggle()) {
+                captureQuantities();
                 currencyOpen = !currencyOpen;
                 client.execute(this::clearAndInit);
                 return true;
             }
             if (drawer.pollPick()) {
+                captureQuantities();
                 currencyId = drawer.selectedId();
                 currencyOpen = false;
                 client.execute(this::clearAndInit);
@@ -338,7 +344,7 @@ public final class ShopScreen extends Screen {
             captureQuantities();
             int columns = ShopQuotes.columns(frameW);
             int rows = (visibleItems().size() + columns - 1) / columns;
-            int max = Math.max(0, rows * CELL - frameH);
+            int max = Math.max(0, rows * CELL + 8 - frameH);
             scroll = Math.max(0, Math.min(max, scroll - (int) Math.round(amount * CELL)));
             client.execute(this::clearAndInit);
             return true;

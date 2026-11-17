@@ -51,7 +51,7 @@ public final class ShopChestScreen extends GenericContainerScreenHandler {
         icon(28,Items.PAPER,selected==null?"未选择商品":ShopRuntime.config.entry(selected).name(),selected==null?"从上方目录选择":selected);
         icon(29,Items.REDSTONE,"数量 -1");icon(30,Items.REDSTONE,"数量 -16");icon(31,Items.PAPER,"数量 "+count);icon(32,Items.GLOWSTONE_DUST,"数量 +16");icon(33,Items.GLOWSTONE_DUST,"数量 +1");
         icon(37,buying?Items.CHEST:Items.HOPPER,buying?"购买模式 · 点击切换出售":"出售模式 · 点击切换购买");
-        icon(39,Items.GOLD_INGOT,"结算货币："+pay.name(),"点击切换中央银行券/可用个人券",mixed?"从发行人本人挂单认购，不足部分央行券补齐":"不会自动换汇");
+        icon(39,Items.GOLD_INGOT,"结算货币："+pay.name(),"点击切换央行券/可用个人券",mixed?"从发行人本人挂单认购，不足部分央行券补齐":"不会自动换汇");
         if(selected!=null && mixed) {
             if(payoutPreview==null) icon(41,Items.BARRIER,"暂无可执行组合报价","检查央行券资金、发行人挂单及银行版本");
             else {

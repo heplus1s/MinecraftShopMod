@@ -25,6 +25,9 @@ public final class ShopUiClient implements ClientModInitializer {
     static final Identifier ACTION = new Identifier("shopmod", "action");
     static final Identifier SYNC = new Identifier("shopmod", "sync");
 
+    private static final ShopCatalogBatch catalogBatch = new ShopCatalogBatch();
+    private static boolean negotiated;
+    private static int helloRetry;
     private static JsonObject pending = new JsonObject();
     private static KeyBinding openKey;
     private static boolean openRequested;
@@ -34,6 +37,7 @@ public final class ShopUiClient implements ClientModInitializer {
     public void onInitializeClient() {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             pending = new JsonObject();
+            catalogBatch.clear(); negotiated = false; helloRetry = 0;
             openRequested = false;
             awaitingOpen = 0;
         });
@@ -50,6 +54,13 @@ public final class ShopUiClient implements ClientModInitializer {
             ClientPlayNetworking.send(HELLO, buf);
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (!negotiated && client.player != null && ++helloRetry >= 20) {
+                helloRetry = 0;
+                if (ClientPlayNetworking.canSend(HELLO)) {
+                    var hello = PacketByteBufs.create(); hello.writeVarInt(PROTOCOL);
+                    ClientPlayNetworking.send(HELLO, hello);
+                }
+            }
             while (openKey.wasPressed()) openRequested = true;
             // A command executes inside ChatScreen.keyPressed. Open only after it has closed.
             if (openRequested) {
@@ -98,6 +109,9 @@ public final class ShopUiClient implements ClientModInitializer {
         } catch (RuntimeException malformed) {
             return;
         }
+        negotiated = true;
+        data = catalogBatch.accept(data);
+        if (data == null) return;
         pending = data;
         if(data.has("payoutPreview") && data.get("payoutPreview").isJsonObject()) {
             awaitingOpen=0; client.setScreen(new ShopPayoutConfirmScreen(data)); return;

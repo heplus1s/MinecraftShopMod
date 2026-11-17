@@ -48,7 +48,7 @@ public final class MemoryBank implements ShopBank {
     @Override public boolean operatingHookInstalled() { return loaded && hook; }
     @Override public boolean operatingAccountReady() { return loaded && ready && hook; }
     @Override public String currencyId() { return "note"; }
-    @Override public String currencyName() { return "银行券"; }
+    @Override public String currencyName() { return "央行券"; }
 
     @Override
     public BigDecimal unitsPerDiamond(PayChoice choice) {

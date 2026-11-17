@@ -69,7 +69,7 @@ final class ShopDrawer extends AlwaysSelectedEntryListWidget<ShopDrawer.Row> {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         int bottom = expanded ? this.bottom : this.top + HEADER;
         frame(context, this.left, this.top, this.right, bottom);
-        String label = getSelectedOrNull() == null ? "银行券" : getSelectedOrNull().choice.label;
+        String label = getSelectedOrNull() == null ? "央行券" : getSelectedOrNull().choice.label;
         context.drawText(client.textRenderer, label, this.left + 6, this.top + 6, 0xFFFFFFFF, true);
         String cue = expanded ? "收起" : "展开";
         context.drawText(client.textRenderer, cue, this.right - client.textRenderer.getWidth(cue) - 6, this.top + 6, 0xFFE8D090, false);
