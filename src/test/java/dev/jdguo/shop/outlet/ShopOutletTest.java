@@ -9,7 +9,7 @@ class ShopOutletTest {
         assertFalse(o.at("minecraft:overworld",1,65,2));
     }
     @Test void namesCannotInjectEntityTagsOrPaths() {
-        for(String bad:new String[]{"", "has space", "../data", "a:b", "a".repeat(33)})
+        for(String bad:new String[]{"", " leading", "../data", "a:b", "a".repeat(33)})
             assertThrows(IllegalArgumentException.class,()->new ShopOutlet(bad,"minecraft:overworld",0,64,0));
     }
     @Test void invalidDimensionRejected() {

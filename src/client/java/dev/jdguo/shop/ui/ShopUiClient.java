@@ -44,8 +44,9 @@ public final class ShopUiClient implements ClientModInitializer {
         openKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.shopmod-ui.open", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "category.shopmod-ui"));
         ClientPlayNetworking.registerGlobalReceiver(SYNC, (client, handler, buf, response) -> {
-            String json = buf.readString(32767);
-            client.execute(() -> receive(client, json));
+            String json;
+            try { json = buf.readString(32767); } catch (RuntimeException malformed) { return; }
+            client.execute(() -> { if (client.getNetworkHandler() == handler && client.player != null) receiveSafely(client, json); });
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             if (!ClientPlayNetworking.canSend(HELLO)) return;
@@ -90,7 +91,7 @@ public final class ShopUiClient implements ClientModInitializer {
     }
 
     private static void sendAction(String action, String itemId, int count, int page, String currency) {
-        if (!ClientPlayNetworking.canSend(ACTION)) return;
+        if (MinecraftClient.getInstance().getNetworkHandler() == null || !ClientPlayNetworking.canSend(ACTION)) return;
         var buf = PacketByteBufs.create();
         buf.writeString(action, 32);
         buf.writeString(itemId == null ? "" : itemId, 128);
@@ -100,6 +101,15 @@ public final class ShopUiClient implements ClientModInitializer {
             buf.writeString(currency, 64);
         }
         ClientPlayNetworking.send(ACTION, buf);
+    }
+
+    private static void receiveSafely(MinecraftClient client, String json) {
+        try { receive(client, json); }
+        catch (RuntimeException invalid) {
+            org.slf4j.LoggerFactory.getLogger("shopmod-ui").error("Cannot display server shop snapshot", invalid);
+            awaitingOpen = 0;
+            inform(client, "商店界面数据无法显示，请检查客户端日志及两端版本；可使用 /shop chest。");
+        }
     }
 
     private static void receive(MinecraftClient client, String json) {

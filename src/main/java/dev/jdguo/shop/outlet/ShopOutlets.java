@@ -34,10 +34,17 @@ public final class ShopOutlets {
     public static void register() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
             var outlet = literal("outlet").requires(source -> source.hasPermissionLevel(2));
-            outlet.then(literal("set").then(argument("name", StringArgumentType.word())
+            outlet.then(literal("set").then(argument("name", StringArgumentType.greedyString())
                     .executes(ctx -> set(ctx.getSource(), StringArgumentType.getString(ctx, "name")))));
-            outlet.then(literal("remove").then(argument("name", StringArgumentType.word())
+            outlet.then(literal("remove").then(argument("name", StringArgumentType.greedyString())
                     .executes(ctx -> remove(ctx.getSource(), StringArgumentType.getString(ctx, "name")))));
+            var rotation = literal("rotate");
+            for (int i = 0; i < 4; i++) {
+                final int facing = i;
+                rotation.then(literal(CounterRotation.name(i)).then(argument("name", StringArgumentType.greedyString())
+                        .executes(ctx -> rotate(ctx.getSource(), StringArgumentType.getString(ctx, "name"), facing))));
+            }
+            outlet.then(rotation);
             outlet.then(literal("list").executes(ctx -> {
                 for (ShopOutlet o : ShopOutletState.get(ctx.getSource().getServer()).all()) {
                     ctx.getSource().sendFeedback(() -> Text.literal(o.name() + " · " + o.dimension() + " " + o.x() + " " + o.y() + " " + o.z()), false);
@@ -84,10 +91,25 @@ public final class ShopOutlets {
                 source.sendError(Text.literal("此处靠近已有交易柜台，请至少间隔三格。")); return 0;
             }
         }
-        try { ShopOutletState.get(source.getServer()).put(new ShopOutlet(name,player.getWorld().getRegistryKey().getValue().toString(),p.getX(),p.getY(),p.getZ())); }
+        try { ShopOutletState.get(source.getServer()).put(new ShopOutlet(name,player.getWorld().getRegistryKey().getValue().toString(),p.getX(),p.getY(),p.getZ(), ShopOutletState.get(source.getServer()).find(name)==null?0:ShopOutletState.get(source.getServer()).find(name).facing())); }
         catch (IllegalArgumentException e) { source.sendError(Text.literal(e.getMessage())); return 0; }
         source.getServer().getOverworld().getPersistentStateManager().save(); reconcile(source.getServer());
         source.sendFeedback(() -> Text.literal("已设置商店柜台 "+name+"，右键打开商店。"),true); return 1;
+    }
+    private static int rotate(ServerCommandSource source, String name, int facing) {
+        ShopOutletState state = ShopOutletState.get(source.getServer());
+        ShopOutlet outlet = state.find(name);
+        if (outlet == null) { source.sendError(Text.literal("没有这个商店网点。")); return 0; }
+        state.put(outlet.rotated(facing));
+        source.getServer().getOverworld().getPersistentStateManager().save();
+        for (ServerWorld world : source.getServer().getWorlds()) {
+            List<Entity> remove = new ArrayList<>();
+            world.iterateEntities().forEach(e -> { if (e.getCommandTags().contains(TAG) && name(e).equals(name)) remove.add(e); });
+            remove.forEach(Entity::discard);
+        }
+        reconcile(source.getServer());
+        source.sendFeedback(() -> Text.literal("商店柜台 " + name + " 已朝向 " + CounterRotation.name(facing)), true);
+        return 1;
     }
     private static int remove(ServerCommandSource source,String name) {
         boolean removed=ShopOutletState.get(source.getServer()).remove(name);
@@ -96,7 +118,7 @@ public final class ShopOutlets {
     }
     private static String name(Entity e) { return e.getCommandTags().stream().filter(t->t.startsWith(KEY)).map(t->t.substring(KEY.length())).findFirst().orElse(""); }
     private static void drop(Entity e) { for(Entity p:List.copyOf(e.getPassengerList())) p.discard(); e.discard(); }
-    private static void tag(Entity e, ShopOutlet o) { e.addCommandTag(TAG); e.addCommandTag(KEY+o.name()); e.setInvulnerable(true); e.setSilent(true); e.setNoGravity(true); }
+    private static void tag(Entity e, ShopOutlet o) { e.addCommandTag(TAG); e.addCommandTag("shopmod_facing_"+CounterRotation.normalize(o.facing())); e.addCommandTag(KEY+o.name()); e.setInvulnerable(true); e.setSilent(true); e.setNoGravity(true); }
     private static void reconcile(MinecraftServer server) {
         ShopOutletState state=ShopOutletState.get(server);
         for(ServerWorld world:server.getWorlds()) {
@@ -104,7 +126,7 @@ public final class ShopOutlets {
             world.iterateEntities().forEach(e->{if(e.getCommandTags().contains(TAG)) all.add(e);});
             for(Entity e:all) {
                 ShopOutlet o=state.find(name(e));
-                if(o==null || !world.getRegistryKey().getValue().toString().equals(o.dimension())) { drop(e); continue; }
+                if(o==null || !matchesFacing(e,o.facing()) || !world.getRegistryKey().getValue().toString().equals(o.dimension())) { drop(e); continue; }
                 if(!world.isChunkLoaded(o.x()>>4,o.z()>>4)) { drop(e); continue; }
                 if(world.getBlockState(new BlockPos(o.x(),o.y(),o.z())).isAir()) { drop(e); continue; }
                 boolean root=e.getCommandTags().contains(ROOT), sign=e.getCommandTags().contains(SIGN);
@@ -135,7 +157,7 @@ public final class ShopOutlets {
     private static void part(InteractionEntity root,ShopOutlet o,Block block,double x,double y,double z,double sx,double sy,double sz) {
         DisplayEntity.BlockDisplayEntity e=new DisplayEntity.BlockDisplayEntity(EntityType.BLOCK_DISPLAY,root.getWorld()); tag(e,o);
         NbtCompound n=new NbtCompound(); e.writeNbt(n); NbtCompound b=new NbtCompound(); b.putString("Name",Registries.BLOCK.getId(block).toString()); n.put("block_state",b);
-        NbtCompound t=new NbtCompound(); t.put("translation",vec(x,y,z)); t.put("scale",vec(sx,sy,sz)); t.put("left_rotation",vec(0,0,0,1));t.put("right_rotation",vec(0,0,0,1));n.put("transformation",t);e.readNbt(n);
+        NbtCompound t=new NbtCompound(); t.put("translation",vec(CounterRotation.x(o.facing(),x,z),y,CounterRotation.z(o.facing(),x,z))); t.put("scale",vec(sx,sy,sz)); t.put("left_rotation",vec(0,-Math.sin(o.facing()*Math.PI/4),0,Math.cos(o.facing()*Math.PI/4)));t.put("right_rotation",vec(0,0,0,1));n.put("transformation",t);e.readNbt(n);
         e.refreshPositionAndAngles(root.getX(),root.getY(),root.getZ(),0,0); if(root.getWorld().spawnEntity(e) && !e.startRiding(root,true)) e.discard();
     }
     private static void spawnSign(ServerWorld world,ShopOutlet o) {
@@ -143,6 +165,11 @@ public final class ShopOutlets {
         NbtCompound n=new NbtCompound();e.writeNbt(n);n.putString("text",Text.Serializer.toJson(Text.literal("✦ 商店 ✦\n"+o.name()+"\n物品买卖 · 银行结算\n右键柜台查看商品").formatted(net.minecraft.util.Formatting.GREEN)));
         n.putString("billboard","center");n.putString("alignment","center");n.putInt("line_width",220);n.putInt("background",0x99001810);n.putBoolean("shadow",true);n.putBoolean("see_through",false);n.putByte("text_opacity",(byte)-1);e.readNbt(n);
         e.refreshPositionAndAngles(o.x()+.5,o.y()+3.3,o.z()+.5,0,0);world.spawnEntity(e);
+    }
+    private static boolean matchesFacing(Entity e, int facing) {
+        String prefix = "shopmod_facing_";
+        var tags = e.getCommandTags();
+        return tags.contains(prefix + CounterRotation.normalize(facing)) || (CounterRotation.normalize(facing) == 0 && tags.stream().noneMatch(t -> t.startsWith(prefix)));
     }
     private static NbtList vec(double... values) { NbtList list=new NbtList();for(double v:values)list.add(NbtFloat.of((float)v));return list; }
 }
