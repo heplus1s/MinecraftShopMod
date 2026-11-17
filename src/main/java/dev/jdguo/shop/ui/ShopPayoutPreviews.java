@@ -14,9 +14,9 @@ public final class ShopPayoutPreviews {
         public JsonObject json() {
             JsonObject o=plan.toJson();
             o.addProperty("quoteId",id); o.addProperty("expiresAt",expiresAt);
-            o.addProperty("description",plan.description()); return o;
+            o.addProperty("description",plan.description(dev.jdguo.shop.ShopRuntime.bank.currencyName())); return o;
         }
-        public String message() { return plan.description()+"\n30 秒内确认：/shop confirm "+id+"；取消：/shop cancel"; }
+        public String message() { return plan.description(dev.jdguo.shop.ShopRuntime.bank.currencyName())+"\n30 秒内确认：/shop confirm "+id+"；取消：/shop cancel"; }
     }
     public record Confirmation(ShopTradeResult result, Preview replacement) {}
     public static Preview create(ShopSession session, UUID player, String item, int count, PayChoice pay) {
