@@ -1,193 +1,311 @@
-# MinecraftShopMod
+# MinecraftShopMod · 服务器商店
 
-Fabric 1.20.1 商店模组：玩家和服务器买卖物品，货款记在央行储蓄里的商店经营账户。价格先按获取难度对照钻石定一个起点，再随买卖小幅波动，长期可以离起点较远。
+适用于 **Minecraft Java 1.20.1 / Fabric / Java 17**。本文以 **v1.0.8** 为基准。
 
-A Fabric 1.20.1 shop where players buy from and sell to the server. Payments go to a shop operating account under central-bank savings. Prices start from gather difficulty relative to diamonds, then drift with supply and demand.
+这是全服共享的**系统商店**：玩家向服务器购买物品，也可以出售普通物品给服务器。它承担物品供应、回收和动态定价，不是玩家私人箱子商店。资金由银行模组记账，商品价格随真实成交逐件变化。
 
-支持指令、实体柜台和原版箱子交易界面。增强客户端界面已内置于本主模组，不安装客户端模组也可以进服。
+- [正式版本下载](https://github.com/heplus1s/MinecraftShopMod/releases)
+- [银行模组](https://github.com/heplus1s/MinecraftBankMod)
+- [市场模组](https://github.com/heplus1s/MinecraftMarketMod)
+- [领地模组](https://github.com/heplus1s/MinecraftLandMod)
 
-Commands, physical counters and vanilla chest screens are available. The optional enhanced UI is embedded in this jar. Vanilla clients can still join.
+## 目录
 
-## 向谁买卖
+1. [安装与快速开始](#安装与快速开始)
+2. [商品与交易界面](#商品与交易界面)
+3. [资金和个人币结算](#资金和个人币结算)
+4. [动态价格原理](#动态价格原理)
+5. [指令](#指令)
+6. [实体柜台](#实体柜台)
+7. [配置、存档与升级](#配置存档与升级)
+8. [可靠结算和中断恢复](#可靠结算和中断恢复)
+9. [联动、兼容与故障排查](#联动兼容与故障排查)
+10. [构建和验证边界](#构建和验证边界)
 
-玩家向服务器购买，也可以把物品卖回服务器。这不是玩家之间在领地上开的铺子，也不是服务器出售土地。土地出让账户留给卖地，商店不用它。
+## 安装与快速开始
 
-Players buy from the server and sell back to the server. This is not a player stall on claimed land, and it is not a land sale. The land-grant account stays with land sales.
+### 服务端与客户端分别安装什么
 
-## 货款记在哪里
+| 使用方式 | 安装要求 |
+|---|---|
+| 专用服务器 | Fabric Loader、Fabric API、`shopmod-1.0.8.jar`；要实际交易，还需要具备相应结算接口的银行模组 |
+| 原版客户端连接 | 不必安装商店模组；通过原版实体、命令和箱子界面操作 |
+| 增强图形界面 | Fabric 客户端安装同一主模组 JAR 和 Fabric API；服务器也要安装并支持相应协议 |
+| 单人游戏 | Fabric 客户端安装主模组；内置服务器负责交易和存档 |
 
-货款走中央银行的账面，不另造一种货币。玩家的活期存款和商店经营账户都是储蓄总池里的分户：每人一条分户，总池是这些分户加在一起。购买时，钱从玩家的活期存款划进商店经营账户。出售时，钱从商店经营账户划回玩家。经营账户可以按活期存款获得利息，利息由中央银行从手续费留存里支付。
+模组元数据要求 Fabric Loader `>=0.15.0`、Minecraft `~1.20.1`、Java `>=17`。本版构建使用 Loader 0.15.11 和 Fabric API 0.92.2+1.20.1。
 
-这个账户不是发行准备金，也不是个人发行用的金库。银行券的发行、兑现和票据仍由中央银行办理，商店不重复做。
+**不要同时保留两个商店主模组版本。旧独立 `shopmod-ui` 必须移除**，否则 Loader 会明确拒绝加载。增强界面已包含在主模组内。
 
-服务器没装中央银行时，商店仍能加载。价格可以按钻石等值查看。真正买卖时，聊天里会说明现在不能入账。
+银行属于加载层面的可选依赖：未安装时商店仍可加载、浏览目录和内部参考价格，但不能实际结算；不会改用其他玩家账户或凭空造钱。建议同时使用当前相互配套的银行、商店、市场版本。本文基准配套版本为银行 v1.0.12、商店 v1.0.8、市场 v1.0.10、领地 v1.0.8。
 
-中央银行目前还没有开出商店经营账户。在它开出之前，买卖会被拒绝，不会把货款记到别的账上。给银行作者的说明在 `docs/bank-hooks.md`。
+### 首次启用
 
-Payments are book entries in the central bank. There is no new currency. Personal demand deposits and the shop operating account are sub-ledgers of the same savings pool. A purchase moves money from the player into the operating account. A sale moves it back. The operating account can earn demand-deposit interest, paid by the bank from retained fees.
+1. 备份世界和配置，安装上述服务端依赖后启动服务器。
+2. 用 `/shop admin status` 检查银行、商店系统账户和报价连接。
+3. 通过**银行央行管理中的商店储蓄管理**，从央行自有央行券储蓄拨款给商店。商店资金初始可能为零，不能依赖玩家先买货才能完成初始化拨款。
+4. 用 `/shop ui` 打开商店，或建立实体柜台。
+5. 玩家将货款存入银行储蓄，选择付款币种后交易。商店不直接从背包抽取钻石或铜锭作为货款。
 
-The account is not an issuance reserve and not a personal issuance vault. Bank-note issue, redemption, and paper stay in the bank mod.
+## 商品与交易界面
 
-Without the bank, the shop still loads. Diamond-equivalent prices can be read. Buy and sell say in chat that nothing can be posted. The bank does not expose the operating account yet, so trades are refused until it does. The note for the bank is `docs/bank-hooks.md`.
+### 目录范围
 
-## 价格怎么走
+v1.0.8 的内置默认目录为 **993 项**，包括自然、建筑、染色、功能、红石与机械、交通运输、食物与饮品、工具、武器、护甲、原材料及其他分类。分类页支持分页；市场可以读取商店统一分类和商品报价。
 
-每种物品有一个起点，表示它相对于钻石有多难获得。钻石的起点是 1。这只是开张时的价格，不表示以后就该停在这里。
+这不是“创造物品栏全部内容”：管理员专用物品、刷怪蛋及需要特定附加数据的物品不等同于普通商品。自定义配置可以增加、删除或停用条目，因此实际服务器目录可能不同于默认数量。
 
-成交时按中央银行当时的汇率，把钻石等值换成玩家选定的一种货币。玩家可以选银行券，也可以选一种个人银行券。购买一笔订单只使用所选货币，不找铜锭或钻石。出售选择个人币时，先预览发行人已挂牌私币与央行券补差组合，明确确认后才成交。铜锭和钻石本身不能当货款。
+- 默认扩展商品允许系统交易，不采用“新增商品一律禁售”的策略。
+- `systemTradeEnabled=false` 可以单独停用某商品的系统买卖。停用不等于删除目录或已有市场玩家挂单。
+- 工具、武器、护甲等按普通新品交易；系统收购不会把附魔、损伤、自定义名称或其他附加数据当成相同的普通新品。
+- 铜锭、钻石可以是商品，**不能因此把它们当商店付款币**。
 
-内部价格曲线以 34 位有效数字保存，显示和支付余额为四位小数。每件物品先换算货币，玩家买入向上舍入、卖出向下舍入，再相加；拆成多笔不会减少相同成交序列的舍入费用。整数零显示成 `0`。不到一个银行券也可以买，只要选定货币的余额够付这四位小数。余额不够就整笔拒绝，不会只成交一部分。没有起点、也没有已经成交的价格时，显示「暂无牌价」，不会临时编一个价。
+### 两种界面使用同一交易逻辑
 
-每成交一个物品，价格按当前价格小幅移动。玩家购买，价格上升。玩家出售，价格下降。没有把价格拉回起点的力量。买卖多了，价格可以离起点很远，以便靠近游戏里真实的供求。
+- **原版箱子界面**：选商品、数量、方向和币种，再确认；重新验证报价。展示物不可取走，快捷移动、拖动等不会被当作买卖。
+- **增强界面**：提供分类和商品浏览、数量与币种选择、成交信息及个人币收款预览。返回商品浏览保留所选币种、分类、数量和滚动状态。
+- 柜台与 `/shop ui` 按客户端能力优先使用增强 UI，不支持时回退箱子。`/shop chest` 是基础箱子入口。
 
-一步的默认大小是 0.002，也就是当前价格的千分之二。一次购买多个时，价格沿着这一小步往上走，购买先按当前档报价再乘以 1.002；出售先除以 1.002 返回上一档再报价。反向交易沿同一曲线，不再按上涨后的价格立即回购。
+商品卡中的**参考单价、静态估算**不等于实际整单成交价：真正交易包含买卖差价、逐件价格变化和四位小数舍入。个人币收款确认页使用服务器实际逐件报价，不以客户端计算结果扣款。
 
-Prices start from gathering difficulty relative to one diamond. That anchor is only the opening price. At the moment of a trade it is converted, at the bank's current rate, into the one currency the player selected: the central bank note, or one personal note. Copper and diamond are not payment currencies. A purchase uses one selected currency. A private-note sale payout requires explicit confirmation of issuer-listed notes plus any central-note remainder.
+## 资金和个人币结算
 
-Curve state keeps 34 significant digits across saves. Payable amounts use four decimals per item: ceiling for player buys and floor for player sells, then sum. This makes batch and split orders follow the same rounding. Integer zero is shown as `0`. An order below one unit is allowed when the selected balance covers that four-decimal total. A short balance refuses the whole order. A missing anchor or live quote is shown as 暂无牌价 and is not replaced with a made-up price.
+### 系统账户与其他模组的分工
 
-Each item in a trade takes one small step off the current price. Buying steps up. Selling steps down. Nothing pulls the price back to the anchor, so a long run of trades can travel far from the start. The default step is 0.002 of the current price.
+银行维护独立的商店系统账户，和地产系统账户分开。央行自有储蓄、玩家存款保管、发行准备金也不是同一个可任意挪用的资金来源。
 
-### 固定双向价差
+商店不发行货币，不自行维护替代银行的余额。实际账户可用余额、冻结／待交付款项和跨币清算由银行接口决定。出售物品时系统必须有足额可用资金；余额不足拒绝，不透支、不自动增发。
 
-`config/shopmod.json` 的 `spreadFraction` 默认 `0.04`，可调整为 `0.0001` 至 `1`。定义为同一执行档位的 `(买价−卖价)/中心价`：4% 即买方支付中心价 ×1.02、卖方收到 ×0.98。该价差无论市场模组是否提供参考价都生效；不是只在有市场成交记录时才生效。不同方向的价格冲击、四位小数舍入可能扩大最终看到的差距，不会将其缩窄为负。
+### 付款币种
 
-旧配置没有该字段时采用 4%；保存配置或执行 `/shop admin spread 0.04` 后写入文件。旧存档价格保留为新的曲线起点，后续保存保留内部精度，不重置已交易价格。
+玩家可以选择：
 
-价差不是消除所有套利的保证：跨商品配方、外部市场操纵、不同货币实时汇率变化仍需独立风控。本修复保证同一报价来源和不变汇率下的即时往返不获利，且批量与拆单一致。
+- 央行券（显示名称使用银行配置）；
+- 银行登记并可有效报价的个人币。
+
+**铜锭和钻石不在商店付款币列表中**。实物货币兑换和实物储蓄业务属于银行；不要把内部“钻石等值”理解为必须用钻石付款。
+
+### 玩家买商品：个人币即时清算
+
+1. 商店计算整单商品价值和所选币种应付数量。
+2. 银行检查玩家余额、个人币抵押链、可用资产与精度。
+3. 个人币按银行实际抵押链清算并回收，商店最终以央行券口径结算，不长期持有玩家交来的个人币来承担汇率风险。
+4. 引用付款成功并完成交付后提交交易和价格变化。失败按同一交易引用恢复，不把退款当成新的反向交易。
+
+个人币支持小数余额，商店不因为它不是整数就自动补扣或找回央行券。具体抵押链、回收库和会计规则以银行模组为准。
+
+### 玩家卖商品：现场认购个人币支付
+
+选择个人币收款不是让系统免费发个人币，也不是把回收库直接返还给玩家：
+
+1. 商店以商品的真实央行券收购预算生成报价。
+2. 银行只使用该个人币**发行人本人已经持有且挂牌可售**的真实库存；支持四位小数，不要求整币。
+3. 商店真实央行券支付给发行人储蓄，购买的个人币交给出售商品的玩家。此过程不新增个人币、不改变原发行准备金。
+4. 玩家确认后才进入托管和交付流程。
+
+**新订单不使用央行券补个人币零头**。库存不足、牌价不存在、或支持的精度下无法完成该报价时，拒绝并说明原因；可以调整数量或主动改选收款币种，不会无提示改付央行券。系统必须有真实央行券预算，不能拿其他抵押物的估值冒充可用央行券。
+
+个人币出售命令先预览，`/shop confirm <quoteId>` 确认，`/shop cancel` 取消。预览绑定玩家、有效 30 秒且只能使用一次；余额、价格、库存或付款方案变化会要求重新确认。旧版本已存在的混合付款未完成订单按原回执恢复，可能仍有“旧订单尾款”，不会追溯改写为新规则。
+
+## 动态价格原理
+
+### 初始锚价、实时价格与市场参考
+
+每个商品配置 `anchorDiamonds`，即内部钻石计价的初始参考价。它是开张起点，不是价格永远回归的目标。已有实时成交价时，仅改锚价不会重置该价格。
+
+价格状态全服共享并写入世界存档。换玩家、返回界面或重启不会重新得到初始价。若市场提供有效成交参考，商店可以结合该参考报价；不能把市场挂牌价直接等同于已成交的系统商店价格。具体参考过滤与影响由联动接口实现，商店自己的价差与逐件曲线仍生效。
+
+### 逐件价格冲击
+
+默认 `stepFraction=0.002`。设当前内部价格为 `P`，每件成交会推动曲线：
+
+- 玩家买入：按当前档报价，再将曲线乘以 `1.002`。
+- 玩家卖出：先将曲线除以 `1.002`，再按下降后的档位报价。
+
+整单 100 件不是把第一件报价乘以 100，而是累加 100 个价格档。忽略价格下限与市场参考变化时，连续卖出 100 件后曲线约降为原来的 **81.89%**。价格有配置的正数下限，并非可以无限降为负值。
+
+相同执行环境下，整批与按相同顺序拆单使用相同逐件曲线和舍入规则。单笔数量限制不等于每日额度；可以继续分批交易，但不能靠分批或换玩家重置价格。
+
+### 固定买卖差价和精度
+
+`spreadFraction` 默认 `0.04`，定义为同一执行档位的 `(买价−卖价)/中心价`：
+
+- 玩家购买支付中心价 × `1.02`；
+- 玩家出售收到中心价 × `0.98`。
+
+内部价格保留 34 位有效数字，货款按每件换算为选定币种后取四位小数：玩家买入向上舍入、卖出向下舍入，再累加。方向冲击和舍入会影响最终实际差价。
+
+允许合理的加工收益和供需套利，是本服务器经济设计的一部分。差价不是对所有配方或跨币种套利的绝对保证；大量出售会压低对应商品价格，实际账户资金不足时停止收购。当前没有额外每日限额或交易冷却，也不保证商店余额永远不会耗尽。
 
 ## 指令
 
-指令的写法是英文。聊天里的说明是中文。
+物品参数使用完整 ID，例如 `minecraft:stone`。指令词为英文，名称和提示支持中文。管理员命令需要 OP 2。
 
-Command words are English. Chat replies are Chinese.
+### 玩家命令
 
-```
+```text
 /shop
+/shop ui
+/shop chest
+/shop list [page]
+/shop price <item>
 /shop buy <item> <count>
 /shop sell <item> <count>
-/shop price <item>
-/shop list [page]
 /shop currency
 /shop currency note
 /shop currency personal <name>
+/shop confirm <quoteId>
+/shop cancel
+```
+
+例：
+
+```text
+/shop currency note
+/shop price minecraft:stone
+/shop buy minecraft:stone 10
+/shop currency personal "我的货币"
+/shop sell minecraft:cobblestone 20
+```
+
+个人币名称包含空格时使用引号。出售选个人币后，根据返回的预览 ID 确认；查看价格不会成交。
+
+### 管理命令
+
+```text
 /shop admin status
 /shop admin reload
-/shop admin step <fraction>
-/shop admin anchor <item> <diamonds>
-/shop admin reset <item>
+/shop admin maxcount 100
+/shop admin trading minecraft:stone false
+/shop admin trading minecraft:stone true
+/shop admin step 0.002
+/shop admin spread 0.04
+/shop admin anchor minecraft:stone 0.01
+/shop admin reset minecraft:stone
 ```
 
-- `/shop` 列出上面的写法。
-- `/shop buy <item> <count>` 向服务器购买。`<item>` 用物品标识，例如 `minecraft:diamond`。`<count>` 是数量。
-- `/shop sell <item> <count>` 把背包里的普通物品卖给服务器。带有附加数据的物品不会被收走。
-- `/shop price <item>` 查看现价、起点，以及按当前汇率换成所选货币后的四位小数金额。没有牌价时显示「暂无牌价」。
-- `/shop list [page]` 翻阅目录。页码从 1 开始。
-- `/shop currency` 查看当前结算货币。
-- `/shop currency note` 改用银行券结算。
-- `/shop currency personal <name>` 改用一种个人银行券结算。`<name>` 是这张券已登记的名字。
-- `/shop admin status` 查看步长、汇率、储蓄总池和商店经营账户是否已经接上。需要管理员。
-- `/shop admin reload` 重新读取配置。已经成交的价格还在。
-- `/shop admin spread <fraction>` 持久化买卖价差，例如 `0.04` 表示相对中心价 4%（买 +2%、卖 −2%）。
-- `/shop admin step <fraction>` 修改每成交一个物品的步长，例如 `0.002`。不能超过 `0.2`。
-- `/shop admin anchor <item> <diamonds>` 修改起点。已经成交过的价格不变。
-- `/shop admin reset <item>` 只清除这一种物品的成交价，让它回到当前起点。其它物品不动。
+| 命令 | 行为 |
+|---|---|
+| `status` | 检查运行参数、银行和系统账户连接 |
+| `reload` | 重新读配置，保留已有成交价格 |
+| `maxcount` | 修改并保存单笔最大数量，范围 1–2304 |
+| `trading` | 开关指定商品的系统买卖，不是删除世界物品 |
+| `step` | 改逐件价格冲击，范围大于 0、至多 0.2 |
+| `spread` | 改双向差价，范围 0.0001–1 |
+| `anchor` | 改初始钻石参考价，不改已成交价格 |
+| `reset` | 清除指定商品实时价格，回到当前锚价；不会重置其他商品 |
 
-新增目录物品时，把一行写进配置，再执行 `/shop admin reload`。不要靠删存档来改价格。
+## 实体柜台
 
-`/shop` prints the commands. `buy` and `sell` trade with the server. `price` and `list` only look. Admin commands need operator permission. `step` and `anchor` change the configuration. `reset` clears one saved price. Reload keeps prices that have already traded.
+OP 准星对准五格内实心底座，上方留两格空气；与其他交易柜台保持足够间隔：
 
-商店刚开张时，经营账户里没有钱，所以要先有人向服务器购买，之后服务器才付得起收购。余额不足时，聊天里会说明。
-
-The operating account starts empty. Someone has to buy from the server before the server can pay for a sale.
-
-## 没有中央银行的时候
-
-模组仍然加载。`/shop price` 和 `/shop list` 可以看钻石等值。`/shop buy` 和 `/shop sell` 会说明中央银行没有加载，或者经营账户还没有接入，并且不会改动物品和价格。
-
-The mod still loads. Price and list keep working in diamond equivalents. Buy and sell explain that the bank is missing or that the operating account is not connected, and they leave items and prices alone.
-
-## 箱子界面和独立客户端
-
-柜台和 `/shop ui` 已提供原版箱子界面，调用 `dev.jdguo.shop.ui.ShopChestUiHooks`，用它报价、购买和出售。计价和入账仍留在商店里，不必重写。
-
-可选的客户端界面已内置于主模组。它如果要同步，使用服务器上的 `shopmod:hello`、`shopmod:action` 和 `shopmod:sync`。没有安装这个界面的原版客户端可以照常进服，服务器不会向它发送这个频道。
-
-The vanilla chest screen calls `dev.jdguo.shop.ui.ShopChestUiHooks`. Optional client UI is embedded in this jar and may use the `shopmod` hello, action, and sync payloads. Vanilla clients can join without that pack.
-
-## 配置和存档
-
-配置在 `config/shopmod.json`。第一次运行会写出一份默认目录。目录里的 `anchorDiamonds` 是起点，只对还没有成交价的物品生效。
-
-成交价写在世界存档里：`data/shopmod.dat`，旁边还有一份 `data/shopmod-prices.json`。升级时保留这些文件。读不出来时，服务器会停下来，而不是改用空价格。
-
-Settings live in `config/shopmod.json`. Traded prices live in the world folder, in `data/shopmod.dat` and `data/shopmod-prices.json`. Upgrades keep that data. A save that cannot be read stops the server instead of starting from empty prices.
-
-## 构建
-
-需要 Java 17。在仓库根目录执行：
-
+```text
+/shop outlet set 北京 总店
+/shop outlet list
+/shop outlet rotate east 北京 总店
+/shop outlet remove 北京 总店
 ```
+
+- 名称支持中文及中间空格，最多 32 字符；最多 128 个网点。
+- `set` 建立或移动同名柜台，已有朝向保留；没有单独的 `move` 子命令。
+- `rotate` 接受 `north`、`east`、`south`、`west`。旧存档网点默认北向。
+- 柜台朝向持久化，模型绕底座中心旋转；交互区是中心对称的方形，悬浮标志仍居中并面向玩家。
+- 右键柜台或底座进入交易界面。删除网点会清理其显示标志，不破坏底座方块。
+- 模型由原版 Interaction、BlockDisplay 和 TextDisplay 实体组成，无需资源包。
+- 区块加载后恢复网点，不强制加载远方区块。底座缺失会停用，恢复后重新显示。
+
+所有柜台访问同一个全服系统商店，不是独立库存或独立经营账户。当前没有单独的柜台高度或悬浮文字高度命令；需要调整位置时对准新底座再次 `set`。
+
+## 配置、存档与升级
+
+### 配置
+
+`config/shopmod.json` 保存参数和目录：
+
+| 字段 | 默认值 | 含义 |
+|---|---:|---|
+| `catalogVersion` | 3 | 目录升级标记 |
+| `stepFraction` | `"0.002"` | 每件价格冲击 |
+| `spreadFraction` | `"0.04"` | 双向买卖差价 |
+| `minDiamondPrice` | `"0.000000001"` | 内部价格正数下限 |
+| `maxCount` | 100 | 单笔交易上限；旧配置已有值不自动覆盖 |
+| `pageSize` | 8 | 命令目录分页大小，范围 1–50 |
+| `catalog` | 默认商品列表 | ID、名称、锚价、系统交易开关 |
+
+目录条目示例（加入现有 `catalog` 数组，不是完整配置）：
+
+```json
+{"item":"minecraft:stone","name":"石头","anchorDiamonds":"0.01","systemTradeEnabled":true}
+```
+
+锚价需大于 0，至多 1,000,000；不应重复 ID。自定义物品还需要服务器真正注册对应物品及相关模组，本模组不会自动赋予所有 Fabric 物品合理价格。
+
+目录升级会补入缺失条目、保留现有条目的自定义价格和开关；升级至目录 v3 前尝试备份为 `shopmod.pre-catalog-v3.json`。启动时配置损坏会记录错误并使用内置默认，**原文件不被覆盖**；这与交易存档损坏的处理不同，管理员应及时查看日志修正。
+
+### 世界数据
+
+- `data/shopmod.dat`：世界价格状态。
+- `data/shopmod-prices.json`：价格副本及交易日志、恢复状态。
+- `data/shopmod_outlets.dat`：网点位置和朝向。
+- 原版玩家数据中的 `shopmod_tx_` 标记：交易恢复证据，不应手工删除。
+
+升级前同时备份世界、玩家数据、银行数据与配置。不要只恢复其中一个文件，也不要删价格文件来调价；调整配置、`reload`、必要时明确 `reset` 单个商品。
+
+## 可靠结算和中断恢复
+
+每笔交易具有唯一引用，使用银行耐久付款、状态查询、完成与回滚接口。缺少这些能力时拒绝实际付款，不退回不可靠的旧接口。
+
+概念流程：
+
+```text
+服务器报价与校验 → 保存订单意图 → 银行付款/托管
+→ 扣取或交付背包物品 → 保存玩家库存与交易标记
+→ 完成银行回执 → 提交价格与订单状态
+```
+
+- 背包装不下不会把商品直接扔在地上；正常交付异常尝试恢复整份库存。
+- 订单日志包含银行状态、计划和价格变动，以引用和玩家标记防止重复付款、重复给货。
+- 个人币收款先托管实际央行券及发行人挂币，库存扣取有耐久证据后再完成给双方入账。
+- 失败或回滚的订单不提交成交价格变化。
+- 无法判断交付结果时锁定相关玩家和商品并给出订单号，不猜测退款或重新给货。
+
+JSON 保存使用临时文件、文件强制写入、替换及读回；平台不支持目录 fsync 时会警告。玩家标记和库存需要玩家文件 I/O，人数多或磁盘慢时存在性能成本。**这不是跨多个独立存档文件的数据库事务，也不保证任何硬件故障下绝对无损**。遇到恢复锁定应保留全部相关日志与存档，先核对，不应手改回执或删除恢复标记。
+
+## 联动、兼容与故障排查
+
+### 与其他三个模组的关系
+
+- **银行**：提供余额、汇率、系统账户、个人币清算、耐久付款和恢复接口；商店负责商品与价格，不重复实现货币发行。
+- **市场**：玩家间挂单与系统商店是不同交易来源。商店导出目录、分类与报价供市场展示，市场可反馈有效成交参考；市场的系统商店交易仍需通过商店规则和银行结算。
+- **领地**：不通过商店卖地。地产系统账户独立，土地计价和产权业务由市场／领地相关接口负责。
+
+### 常见问题
+
+| 现象 | 检查方向 |
+|---|---|
+| 商店无法收购物品 | 银行商店账户是否有足额可用央行券；物品是否普通无附加数据；交易上限与单项开关 |
+| 个人币无法收款 | 发行人实际挂牌库存、牌价、四位精度是否可结算；不能期待自动改发央行券 |
+| 有余额仍无法支付 | 所选币种是否正确，余额是否锁定或属于其他资产；旧银行是否缺少新接口 |
+| 图形界面未打开 | 客户端是否安装主模组、双方版本／协议是否兼容；不支持增强界面时箱子回退是正常行为 |
+| 关闭后重新连接出现旧界面 | 本版增加旧连接回包隔离与异常数据诊断；仍异常时提供客户端和服务端 `latest.log` |
+| 单笔上限仍为 64 | 旧配置保留原值；执行 `/shop admin maxcount 100` 显式调整 |
+| 商品价格与参考估算不同 | 实际成交含差价、逐件曲线、实时汇率及舍入；估算不是锁定报价 |
+| 商品没有显示／仍被停用 | 检查当前配置目录、升级标记、`systemTradeEnabled` 及日志，不要直接删存档 |
+
+服务端权威校验金额、库存和身份。客户端 UI 只提交操作意图；本地安装模组不会让不支持这些通道的远程服务器获得银行功能。连接后协商、异常解码保护与旧会话过滤不等于可以忽略版本不兼容。
+
+## 构建和验证边界
+
+```bash
 ./gradlew build
+# Windows
+.\gradlew.bat build
 ```
 
-给服务器用的 jar 在 `build/libs/shopmod-1.0.0.jar`。把它和 Fabric Loader、Fabric API 一起放进服务器的 `mods`。原版客户端不用安装。单人游戏要在带 Fabric 的客户端里装同一份 jar，因为单人世界的服务器跑在那个客户端里。
+产物位于 `build/libs/`，本版主产物为 `shopmod-1.0.8.jar`。构建需要 Java 17，以及访问 Fabric/Maven 依赖仓库；网络限流或依赖解析失败不等同于代码测试失败。
 
-中央银行是可选的。装上以后，汇率和报价会接上；经营账户要等银行补上 `docs/bank-hooks.md` 里的类。
+测试覆盖价格曲线与拆单、市场参考、个人币支付计划、配置与目录、恢复状态等。真实 Minecraft 注册表测试通过 Fabric 的 JUnit/Knot 环境检查默认目录物品，不是只验证字符串格式。
 
-Java 17 is required. `./gradlew build` writes `build/libs/shopmod-1.0.0.jar`. Put that jar, Fabric Loader, and Fabric API on the server. Vanilla clients do not install it. Singleplayer needs the same jar on a Fabric client, because that client runs the world. The bank is optional.
+自动测试和完整构建不能代替实际游戏验收。部署后建议分别测试原版客户端、完整 Fabric 客户端、专用服务器、断线重连、柜台旋转／区块重载和交易取消；UI 视觉、多人环境与真实断电恢复仍需要现场验证。
 
-许可证为 MIT，版权归 heplus1s。
-
-The license is MIT. Copyright heplus1s.
-
-## 实体商店柜台（原版客户端可见）
-
-管理员看准五格内实心方块，确保上方两格空气，执行：
-
-- `/shop outlet set spawn`：建立或移动名为 `spawn` 的商店柜台。
-- `/shop outlet list`：列出当前世界的网点。
-- `/shop outlet remove spawn`：删除网点及其悬浮标志，不破坏底座。
-- `/shop ui`：保留远程打开原版箱子界面的入口；原有买卖命令不变。
-
-所有网点配置命令需要 OP 2。柜台是原版 Interaction/BlockDisplay 实体，显示木质柜台、浅色台面与绿色边饰；悬浮 TextDisplay 显示“商店”和网点名。无需资源包或客户端模组。网点保存在世界 `data/shopmod_outlets.dat`，区块加载后自动恢复标志，重设/删除会清理本模组对应标志；不强制加载远方区块。底座被移除时柜台停用，恢复底座后重新显示。网点最多 128 个，名字限 1–32 位字母、数字、短横线和下划线。
-
-右键柜台或底座打开目录，可选择商品、数量、购买/出售模式和银行实际提供的结算货币。再点击确认才结算；确认时重新验证整单报价，变动会要求重新确认。交易仍由已有 TradeDesk 和银行接口处理，柜台不直接改余额。菜单展示物不能取走，快捷移动、拖动、交换和双击不触发交易。一次确认后清空选中商品，避免重复点击意外连续成交。
-
-新柜台是所有网点共享的服务器商店，不是玩家私人箱子商店或独立库存；不改变既有定价和远程交易规则。仍需验证实际游戏的柜台显示、跨区块重载及原版客户端联机交互。
-
-
-## 内置客户端界面
-
-本主模组 JAR 同时包含服务端逻辑与可选客户端界面。服务器安装后，原版客户端无需安装本模组即可使用原有命令/原版菜单。客户端安装同一 JAR 可启用增强界面；界面只在客户端入口加载，服务端保持交易权威。
-
-升级时请移除旧 `shopmod-ui` 独立 JAR；同时安装会由 Fabric Loader 明确拒绝，以避免重复接收器、快捷键和类冲突。不要保留同一主模组的两个版本。只安装本地客户端不会改变远端服务器数据；不支持相关网络通道的服务器不会接收本 UI 操作。
-
-兼容性验收仍需分别执行：专用服务器+原版客户端、Fabric空客户端、完整客户端、单人世界切换远程服务器、旧 UI 包并存的拒绝提示、协议不匹配时的基础入口。构建通过不等同于实际联机验收。
-
-### 可靠结算与中断恢复
-
-商店要求新版银行引用接口 `transferReferenced / rollback / receiptStatus / completePayment / durablePayments`。旧接口不再降级执行付款。每笔订单使用唯一引用：买货的个人币按银行实际抵押链即时清算；卖货选择个人币时不再逆向回流回收库，而使用下述发行人现挂币组合付款。交货明确失败时撤销同一引用，不把退款当成新的一笔卖货或反向发行。
-
-订单意图、银行状态和最终价格写入 `data/shopmod-prices.json` 的 `trades`；版本 3 与 `journalRevision` 防止恢复时较旧 NBT 覆盖已保存订单。JSON 使用临时文件、文件强制落盘、原子替换及完整读回；文件保存失败时停止交易，不吞掉错误。目录 fsync 若平台不支持，或 Windows 拒绝打开目录，则记录警告但不阻止交易；断电目录项持久性依赖操作系统，不承诺所有硬件故障下绝对耐久。库存交付不再把装不下的物品扔在地上，普通异常会恢复整份库存。
-
-服务器在修改库存后把订单标记放进原版玩家 `Tags`，与 `Inventory` 同一玩家 NBT 保存；读回标记并核实内存标记、强制文件落盘成功后才将订单完成。不要手动编辑 `shopmod_tx_` 标记或分别恢复银行/商店/玩家存档。当前实现调用 `saveAllPlayerData()`，每笔需要玩家文件 I/O，在线玩家很多时有性能成本。单机存档若玩家当前状态与玩家文件标记不一致，会停止自动恢复而不是猜测发货。
-
-正常订单完成后清理内存标记，在下一次保存随库存一起清理；重连时也只清理日志中已确认完成的旧标记。中断订单会核对银行回执与玩家标记，已给货不重复给、已扣款不重复扣。无法判明时锁定相关玩家和商品，显示订单号供管理员核对，不自动退款或重发。不确定状态仍可能需要人工处理；这不是把多个独立文件变成同一个数据库事务。
-
-
-### 出售物品：发行人挂单认购与央行券补差
-
-选择个人币收款时，系统以本次商品的央行券买入价作为总应付预算，只认购该币**发行人本人已持有、已挂牌**的整币，不增发、不使用回收库、不改变原准备金。系统实际央行券支付给发行人储蓄，认购私币交给出售物品的玩家；挂币不足或整币除不尽的部分以央行券补齐。无可成交私币时，明确预览全部央行券。系统必须有足够真实央行券承担整份预算，实物估值不能替代现金。没有新增手续费，也不合并其他发行人的挂单。
-
-- `/shop sell <item> <count>`：选私币时仅生成预览；用 `/shop confirm <quoteId>` 确认，`/shop cancel` 取消。
-- 原版箱子：展示私币数量、单价、发行人入款、央行券补差和总应付，再点确认。
-- 增强界面：展示可滚动组合确认页；旧服务器不支持该能力时拒绝执行私币卖货。
-
-预览绑定当前玩家，30 秒有效且只能使用一次；撤单、余额/价格/组合变化会要求重新预览确认。断线、关闭/取消和服务器停止清理尚未确认的 token。新订单以 `issuer_offer_payout` 类型保存完整计划，不会在中断恢复时改价。银行先托管实际现金与挂币，库存扣取有耐久证明后 `completePayment` 才同时给发行人入款、玩家入私币与央行券。老版本已付款未完成订单保留旧 schema 恢复，不改解释为新交易。
-
-### 网点名称与柜台朝向
-
-网点名称支持中文与中间空格。OP 对准五格内实心底座（上方两格空气）执行 `/shop outlet set 北京 总店`，右键柜台打开原有交易界面。
-`/shop outlet rotate east 北京 总店` 将柜台正面朝东；方向可用 `north`、`east`、`south`、`west`。旧网点保持北向。旋转会持久保存，交互中心和朝向无关的正方形交互区保持在底座中心，悬浮文字仍居中面向玩家。
-`/shop outlet remove 北京 总店` 删除网点，底座方块不变。重设同名网点位置会保留朝向。
+许可证：[MIT](LICENSE)。
