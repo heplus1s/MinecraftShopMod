@@ -37,7 +37,7 @@ public final class ShopPayoutPreviews {
         if(System.currentTimeMillis()>previous.expiresAt() || !previous.plan().same(current)) {
             Preview replacement=create(session,player,previous.plan().itemId(),previous.plan().count(),previous.plan().currency());
             return new Confirmation(ShopTradeResult.fail("payout_quote_changed", replacement==null
-                    ? "当前资金或挂单不可用，未收取物品。" : "报价或组合已变化，请查看新预览并再次确认。"),replacement);
+                    ? "当前资金或挂单不可用，未收取物品。" : "报价或收款金额已变化，请查看新预览并再次确认。"),replacement);
         }
         ShopTradeResult result=TradeDesk.sellConfirmed(session,purse,player,previous.plan());
         Preview replacement="payout_quote_changed".equals(result.code())

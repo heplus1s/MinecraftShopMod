@@ -76,7 +76,7 @@ public final class ShopCommands {
                             ServerPlayerEntity who=player(ctx.getSource());
                             if(who==null)return problem(ctx.getSource(),ShopText.notPlayer());
                             dev.jdguo.shop.ui.ShopPayoutPreviews.cancel(who.getUuid());
-                            return info(ctx.getSource(),"已取消组合付款预览，未执行交易。");
+                            return info(ctx.getSource(),"已取消个人币收款预览，未执行交易。");
                         }))
                         .then(literal("price")
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
@@ -106,6 +106,13 @@ public final class ShopCommands {
                                                 .then(argument("diamonds", StringArgumentType.word())
                                                         .executes(ctx -> anchor(ctx,
                                                                 StringArgumentType.getString(ctx, "diamonds"))))))
+                                .then(literal("maxcount")
+                                        .then(argument("count", IntegerArgumentType.integer(1,2304))
+                                                .executes(ctx -> maxCount(ctx.getSource(), IntegerArgumentType.getInteger(ctx,"count")))))
+                                .then(literal("trading")
+                                        .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
+                                                .then(argument("enabled", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                                        .executes(ctx -> trading(ctx, com.mojang.brigadier.arguments.BoolArgumentType.getBool(ctx,"enabled"))))))
                                 .then(literal("reset")
                                         .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                                 .executes(ctx -> reset(ctx)))))
@@ -123,7 +130,7 @@ public final class ShopCommands {
         PayChoice selected=ShopChestUiHooks.payer(player);
         if(!buying && selected.personal()) {
             var preview=ShopChestUiHooks.previewPayout(player,itemId,count,selected);
-            return preview==null ? problem(source,"无法生成组合付款预览，请检查央行券资金或发行人挂单。") : info(source,preview.message());
+            return preview==null ? problem(source,dev.jdguo.shop.trade.TradeDesk.privatePayoutUnavailable(ShopRuntime.session(),itemId,count,selected)) : info(source,preview.message());
         }
         ShopTradeResult result = buying
                 ? ShopChestUiHooks.buy(player, itemId, count)
@@ -282,6 +289,27 @@ public final class ShopCommands {
         } catch (IOException error) {
             ShopRuntime.LOGGER.error("商店配置写不了", error);
             return problem(source, "配置没有写进 config/shopmod.json。起点仍是原来的数值。");
+        }
+    }
+
+    private static int maxCount(ServerCommandSource source, int count) {
+        try {
+            ShopConfig next = ShopRuntime.config.withMaxCount(count);
+            ConfigStore.write(next); ShopRuntime.config = next;
+            return info(source, "商店单笔数量上限已设为 " + count + "。批量逐件计价；连续交易不会重置价格，经营账户不足时拒绝收购。");
+        } catch (IllegalArgumentException | IOException error) {
+            return problem(source, "未更新单笔上限：" + error.getMessage());
+        }
+    }
+
+    private static int trading(CommandContext<ServerCommandSource> ctx, boolean enabled) {
+        try {
+            ShopConfig next = ShopRuntime.config.withSystemTrading(item(ctx), enabled);
+            ConfigStore.write(next); ShopRuntime.config = next;
+            return info(ctx.getSource(), enabled ? "已开放系统买卖。请确认已审查合成、切石及熔炼套利，配置价格不代表安全保证。"
+                    : "已关闭该商品系统买卖；目录展示和玩家市场挂牌不受影响。");
+        } catch (IllegalArgumentException | IOException error) {
+            return problem(ctx.getSource(), "未更新系统交易开关：" + error.getMessage());
         }
     }
 

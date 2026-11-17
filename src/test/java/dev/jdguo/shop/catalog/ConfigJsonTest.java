@@ -25,7 +25,7 @@ class ConfigJsonTest {
         ShopConfig config = ConfigJson.parse("""
                 {"catalog":[{"item":"minecraft:diamond","name":"钻石","anchorDiamonds":"1"}]}
                 """);
-        assertEquals(64, config.maxCount());
+        assertEquals(100, config.maxCount());
         assertEquals(new BigDecimal("0.002"), config.stepFraction());
         assertThrows(IllegalArgumentException.class, () -> ConfigJson.parse("{\"stepFraction\":\"0.002\"}"));
     }
@@ -43,7 +43,7 @@ class ConfigJsonTest {
         config.validate();
     }
     @Test void migratedCatalogHonorsExplicitRemoval() {
-        ShopConfig config = ConfigJson.parse("{\"catalogVersion\":2,\"catalog\":[]}");
+        ShopConfig config = ConfigJson.parse("{\"catalogVersion\":3,\"catalog\":[]}");
         assertEquals(0, config.catalog().size());
         assertEquals(0, ConfigJson.parse(ConfigJson.write(config)).catalog().size());
     }

@@ -29,13 +29,13 @@ public final class ConfigStore {
             String original = Files.readString(path);
             ShopRuntime.config = ConfigJson.parse(original);
             var json = com.google.gson.JsonParser.parseString(original).getAsJsonObject();
-            if (!json.has("catalogVersion") || json.get("catalogVersion").getAsInt() < 2) {
+            if (!json.has("catalogVersion") || json.get("catalogVersion").getAsInt() < 3) {
                 try {
                 // Preserve unknown configuration fields and custom prices; back up before migration.
-                if (Files.notExists(path.resolveSibling("shopmod.pre-catalog-v2.json")))
-                    Files.copy(path, path.resolveSibling("shopmod.pre-catalog-v2.json"));
+                if (Files.notExists(path.resolveSibling("shopmod.pre-catalog-v3.json")))
+                    Files.copy(path, path.resolveSibling("shopmod.pre-catalog-v3.json"));
                 var upgraded = com.google.gson.JsonParser.parseString(ConfigJson.write(ShopRuntime.config)).getAsJsonObject();
-                json.add("catalog", upgraded.get("catalog")); json.addProperty("catalogVersion", 2);
+                json.add("catalog", upgraded.get("catalog")); json.addProperty("catalogVersion", 3);
                 atomicWrite(path, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json));
                 } catch (IOException migrationFailure) {
                     ShopRuntime.LOGGER.warn("商店目录已在内存升级，配置备份/保存失败；保留原配置和自定义价格。", migrationFailure);

@@ -41,6 +41,7 @@ public final class ShopUiSnapshot {
         root.addProperty("sellCurrencyKey", pay.key());
         root.addProperty("step", MoneyScale.display(ShopRuntime.config.stepFraction()));
         root.addProperty("spread", MoneyScale.display(ShopRuntime.config.spreadFraction()));
+        root.addProperty("maxCount", ShopRuntime.config.maxCount());
         root.addProperty("page", shown);
         root.addProperty("pages", pages);
         root.addProperty("message", message == null || message.isBlank() ? "" : "[商店] " + message);
@@ -77,6 +78,10 @@ public final class ShopUiSnapshot {
             JsonObject item = new JsonObject();
             item.addProperty("item", row.itemId());
             item.addProperty("name", row.itemName());
+            item.addProperty("systemTradeEnabled", ShopRuntime.config.entry(row.itemId()).systemTradeEnabled());
+            String category = dev.jdguo.shop.catalog.CatalogCategories.id(row.itemId());
+            item.addProperty("categoryId", category);
+            item.addProperty("category", dev.jdguo.shop.catalog.CatalogCategories.label(category));
             if (row.diamondEach() == null) {
                 item.add("diamond", com.google.gson.JsonNull.INSTANCE);
             } else {

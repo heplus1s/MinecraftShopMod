@@ -29,6 +29,8 @@ public final class ShopText {
                 /shop admin spread <fraction>
                 /shop admin step <fraction>
                 /shop admin anchor <item> <diamonds>
+                /shop admin maxcount <1–2304>
+                /shop admin trading <item> <true|false>
                 /shop admin reset <item>
                 向服务器购买、向服务器出售、查询价格，或翻阅目录。结算货币用 currency 选择。调整配置需要管理员。""";
     }
@@ -40,6 +42,8 @@ public final class ShopText {
                 /shop admin spread <fraction>
                 /shop admin step <fraction>
                 /shop admin anchor <item> <diamonds>
+                /shop admin maxcount <1–2304>
+                /shop admin trading <item> <true|false>
                 /shop admin reset <item>
                 查看商店和中央银行的连接，或调整价差、步长与起点。已有的成交价不会被整表清除。""";
     }
@@ -69,7 +73,7 @@ public final class ShopText {
     }
 
     public static String currencySet(String name) {
-        return "结算货币已改为" + name + "。购买按所选币支付；出售选个人币时先预览发行人挂币与央行券补差，确认后成交。";
+        return "结算货币已改为" + name + "。购买按所选币支付；出售选个人币时先预览实收金额，支持小数；挂单不足时不会自动改付央行券。";
     }
 
     public static String zeroCharge() {
@@ -144,8 +148,8 @@ public final class ShopText {
     public static String bought(String name, int count, String currency, BigDecimal notes,
                                  BigDecimal after, BigDecimal anchor, BigDecimal balance) {
         String text = "已向服务器购入" + name + " " + count + " 个，支付" + currency + " "
-                + MoneyScale.display(notes) + "。成交后单价为 " + MoneyScale.display(after)
-                + " 钻石等值，起点为 " + MoneyScale.display(anchor) + "。";
+                + MoneyScale.display(notes) + "。成交后参考单价：" + (after == null ? "暂无牌价" : MoneyScale.display(after) + " " + currency)
+                + "；初始参考单价：" + (anchor == null ? "暂无牌价" : MoneyScale.display(anchor) + " " + currency) + "。";
         if (balance != null) {
             text += "该货币余额为" + currency + " " + MoneyScale.display(balance) + "。";
         }
@@ -155,8 +159,8 @@ public final class ShopText {
     public static String sold(String name, int count, String currency, BigDecimal notes,
                                BigDecimal after, BigDecimal anchor, BigDecimal balance) {
         String text = "已向服务器出售" + name + " " + count + " 个，收入" + currency + " "
-                + MoneyScale.display(notes) + "。成交后单价为 " + MoneyScale.display(after)
-                + " 钻石等值，起点为 " + MoneyScale.display(anchor) + "。";
+                + MoneyScale.display(notes) + "。成交后参考单价：" + (after == null ? "暂无牌价" : MoneyScale.display(after) + " " + currency)
+                + "；初始参考单价：" + (anchor == null ? "暂无牌价" : MoneyScale.display(anchor) + " " + currency) + "。";
         if (balance != null) {
             text += "该货币余额为" + currency + " " + MoneyScale.display(balance) + "。";
         }

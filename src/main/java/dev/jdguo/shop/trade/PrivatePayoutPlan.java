@@ -22,13 +22,14 @@ public record PrivatePayoutPlan(String itemId, String itemName, int count, PayCh
     public String description(String centralName) {
         if (centralName == null || centralName.isBlank()) centralName = "央行券";
         JsonObject q=bankQuote();
-        String fallback=q.get("privateAmount").getAsBigDecimal().signum()==0
-                ? "本次无可成交私币，全部以" + centralName + "支付。\n" : "";
-        return fallback + "出售 " + itemName + " ×" + count + "；总应付 " + centralBudget.toPlainString() + " " + centralName + "。\n"
-                + "你将收到 " + number(q,"privateAmount") + " " + currency.name()
-                + " ＋ " + number(q,"centralRemainder") + " " + centralName + "。\n"
-                + "发行人挂单成交价：每币 " + number(q,"unitPrice") + " " + centralName + "；发行人收到 "
-                + number(q,"issuerProceeds") + " " + centralName + "。原准备金不变。";
+        // Old journal entries may still contain a mixed payout. Describe them truthfully;
+        // new quotes are validated as entirely personal currency before entering the journal.
+        String legacyRemainder = q.get("centralRemainder").getAsBigDecimal().signum() > 0
+                ? " ＋ " + number(q,"centralRemainder") + " " + centralName + "（旧订单尾款）" : "";
+        return "出售 " + itemName + " ×" + count + "；实收 " + number(q,"privateAmount") + " "
+                + currency.name() + legacyRemainder + "。\n"
+                + "收款来自发行人现有挂单，不增发货币、不改变原准备金。";
+
     }
     private static String number(JsonObject q,String key) { return q.get(key).getAsBigDecimal().stripTrailingZeros().toPlainString(); }
     public JsonObject toJson() {

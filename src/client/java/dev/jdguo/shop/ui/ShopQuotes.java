@@ -62,6 +62,13 @@ public final class ShopQuotes {
         return data != null && data.has("open") && data.get("open").isJsonPrimitive() && data.get("open").getAsBoolean();
     }
 
+    public static boolean systemTradeEnabled(JsonObject data, String id) {
+        for (JsonObject row : array(data, "listings")) {
+            if (id.equals(first(row, "item", "id"))) return !row.has("systemTradeEnabled") || row.get("systemTradeEnabled").getAsBoolean();
+        }
+        return true; // older servers remain authoritative
+    }
+
     public static List<Item> items(JsonObject data) {
         List<Item> rows = new ArrayList<>();
         rows.addAll(readItems(data, "listings", "item"));
@@ -78,8 +85,8 @@ public final class ShopQuotes {
             found.add(tab(item));
         }
         List<String> order = java.util.List.of(
-                "建筑方块", "染色方块", "自然方块", "功能方块", "红石",
-                "工具与实用物品", "战斗", "食物与饮品", "原材料", "其他");
+                "建筑方块", "染色方块", "自然方块", "功能方块", "红石与机械", "交通运输",
+                "工具", "武器", "护甲", "食物与饮品", "原材料", "其他", "红石", "工具与实用物品", "战斗");
         List<String> tabs = new ArrayList<>();
         for (String name : order) {
             if (found.remove(name)) {
