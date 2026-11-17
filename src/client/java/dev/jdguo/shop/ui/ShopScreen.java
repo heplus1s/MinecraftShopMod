@@ -112,7 +112,7 @@ public final class ShopScreen extends Screen {
         }
         List<ShopQuotes.Item> items = visibleItems();
         int columns = ShopQuotes.columns(frameW);
-        int content = ((items.size() + columns - 1) / columns) * CELL;
+        int content = ((items.size() + columns - 1) / columns) * CELL + 8;
         scroll = Math.min(scroll, Math.max(0, content - frameH));
         int cellW = Math.max(40, (frameW - 8) / columns);
         for (int index = 0; index < items.size(); index++) {
@@ -120,7 +120,7 @@ public final class ShopScreen extends Screen {
             int row = index / columns;
             int cellX = frameX + 4 + col * cellW;
             int cellY = frameY + 4 + row * CELL - scroll;
-            if (cellY < frameY || cellY + CELL > frameY + frameH || cellX + 122 > frameX + frameW - 4) {
+            if (cellY < frameY || cellY + 68 > frameY + frameH || cellX + 122 > frameX + frameW - 4) {
                 continue;
             }
             ShopQuotes.Item item = items.get(index);
@@ -318,11 +318,13 @@ public final class ShopScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (drawer != null && drawer.isMouseOver(mouseX, mouseY) && drawer.mouseClicked(mouseX, mouseY, button)) {
             if (drawer.pollToggle()) {
+                captureQuantities();
                 currencyOpen = !currencyOpen;
                 client.execute(this::clearAndInit);
                 return true;
             }
             if (drawer.pollPick()) {
+                captureQuantities();
                 currencyId = drawer.selectedId();
                 currencyOpen = false;
                 client.execute(this::clearAndInit);
@@ -342,7 +344,7 @@ public final class ShopScreen extends Screen {
             captureQuantities();
             int columns = ShopQuotes.columns(frameW);
             int rows = (visibleItems().size() + columns - 1) / columns;
-            int max = Math.max(0, rows * CELL - frameH);
+            int max = Math.max(0, rows * CELL + 8 - frameH);
             scroll = Math.max(0, Math.min(max, scroll - (int) Math.round(amount * CELL)));
             client.execute(this::clearAndInit);
             return true;
