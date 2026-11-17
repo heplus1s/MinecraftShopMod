@@ -27,7 +27,7 @@ public final class ShopOutletState extends PersistentState {
         NbtList list = nbt.getList("outlets", 10);
         for (int i = 0; i < list.size(); i++) {
             NbtCompound row = list.getCompound(i);
-            ShopOutlet outlet = new ShopOutlet(row.getString("name"), row.getString("dimension"), row.getInt("x"), row.getInt("y"), row.getInt("z"));
+            ShopOutlet outlet = new ShopOutlet(row.getString("name"), row.getString("dimension"), row.getInt("x"), row.getInt("y"), row.getInt("z"), CounterRotation.normalize(row.getInt("facing")));
             state.put(outlet);
         }
         return state;
@@ -37,7 +37,7 @@ public final class ShopOutletState extends PersistentState {
         for (ShopOutlet outlet : entries.values()) {
             NbtCompound row = new NbtCompound();
             row.putString("name", outlet.name()); row.putString("dimension", outlet.dimension());
-            row.putInt("x", outlet.x()); row.putInt("y", outlet.y()); row.putInt("z", outlet.z()); list.add(row);
+            row.putInt("x", outlet.x()); row.putInt("y", outlet.y()); row.putInt("z", outlet.z()); row.putInt("facing", CounterRotation.normalize(outlet.facing())); list.add(row);
         }
         nbt.put("outlets", list); return nbt;
     }
