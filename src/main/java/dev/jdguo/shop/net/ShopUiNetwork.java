@@ -43,6 +43,7 @@ public final class ShopUiNetwork {
                 return;
             }
             server.execute(() -> {
+                if (server.getPlayerManager().getPlayer(player.getUuid()) != player || player.networkHandler != handler) return;
                 if (version != PROTOCOL) {
                     sessions.remove(player.getUuid());
                     return;
@@ -66,7 +67,10 @@ public final class ShopUiNetwork {
             } catch (RuntimeException error) {
                 return;
             }
-            server.execute(() -> handle(player, action, itemId, count, page, currency));
+            server.execute(() -> {
+                if (server.getPlayerManager().getPlayer(player.getUuid()) != player || player.networkHandler != handler) return;
+                handle(player, action, itemId, count, page, currency);
+            });
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             sessions.remove(handler.player.getUuid());
