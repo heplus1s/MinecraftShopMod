@@ -69,6 +69,25 @@ public final class ShopQuotes {
         return true; // older servers remain authoritative
     }
 
+    public static boolean outOfStock(JsonObject data, String id) {
+        for (JsonObject row : array(data, "listings")) {
+            if (id.equals(first(row, "item", "id"))) return "0".equals(text(row, "stock"));
+        }
+        return false;
+    }
+
+    public static String stock(JsonObject data, String id) {
+        for (JsonObject row : array(data, "listings")) {
+            if (id.equals(first(row, "item", "id"))) {
+                String count = text(row, "stock");
+                String target = text(row, "targetStock");
+                if (count == null) return null;
+                return target == null ? count + " 件" : count + " / " + target + " 件（实际／目标）";
+            }
+        }
+        return null;
+    }
+
     public static List<Item> items(JsonObject data) {
         List<Item> rows = new ArrayList<>();
         rows.addAll(readItems(data, "listings", "item"));

@@ -15,7 +15,7 @@ class TradeJournalTest {
     final String item = "minecraft:diamond";
     final MemoryBank bank = new MemoryBank();
     final MapPurse purse = new MapPurse();
-    final PriceBook book = new PriceBook(ShopSaved.empty());
+    final PriceBook book = StockFixture.stocked(item);
     ShopSession session(Runnable persist) { return new ShopSession(ShopConfig.defaults(), book, bank, persist); }
     void same(String n, BigDecimal amount) { assertEquals(0, new BigDecimal(n).compareTo(amount)); }
 

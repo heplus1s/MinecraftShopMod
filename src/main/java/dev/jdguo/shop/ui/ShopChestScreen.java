@@ -48,7 +48,9 @@ public final class ShopChestScreen extends GenericContainerScreenHandler {
         payoutPreview=selected!=null && mixed?ShopChestUiHooks.previewPayout(viewer,selected,count,pay):null;
         if(!mixed)ShopPayoutPreviews.cancel(viewer.getUuid());
         quote=selected==null || mixed?null:ShopChestUiHooks.quote(selected,count,buying,pay);
-        icon(28,Items.PAPER,selected==null?"未选择商品":ShopRuntime.config.entry(selected).name(),selected==null?"从上方目录选择":selected);
+        long selectedStock = selected == null ? 0 : ShopRuntime.state.book().saved().stock(selected);
+        icon(28, Items.PAPER, selected == null ? "未选择商品" : ShopRuntime.config.entry(selected).name(),
+                selected == null ? "从上方目录选择" : selectedStock == 0 ? "缺货 · 暂停出售" : "现有库存：" + selectedStock + " 件");
         icon(29,Items.REDSTONE,"数量 -1");icon(30,Items.REDSTONE,"数量 -16");icon(31,Items.PAPER,"数量 "+count);icon(32,Items.GLOWSTONE_DUST,"数量 +16");icon(33,Items.GLOWSTONE_DUST,"数量 +1");
         icon(37,buying?Items.CHEST:Items.HOPPER,buying?"购买模式 · 点击切换出售":"出售模式 · 点击切换购买");
         String centralName=ShopRuntime.bank.currencyName();

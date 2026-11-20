@@ -26,6 +26,7 @@ public final class ShopMod implements ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             ShopRuntime.server = server;
+            ShopRuntime.state = null;
             ShopRuntime.state = ShopWorldState.get(server);
             if (FabricLoader.getInstance().isModLoaded("bankmod")) {
                 try {
@@ -53,8 +54,12 @@ public final class ShopMod implements ModInitializer {
                     ? "[商店] 上次中断订单已核对恢复，请检查库存及账目。"
                     : "[商店] 上次订单尚待核对，请勿重复付款。订单：" + ref), false);
         });
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                dev.jdguo.shop.inventory.BulkShulkerOrders.disconnect(handler.player.getUuid()));
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
-            dev.jdguo.shop.ui.ShopPayoutPreviews.clear(); ShopRuntime.save();
+            dev.jdguo.shop.ui.ShopPayoutPreviews.clear();
+            dev.jdguo.shop.inventory.BulkShulkerOrders.clear();
+            ShopRuntime.save();
         });
     }
 

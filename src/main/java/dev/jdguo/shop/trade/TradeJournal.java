@@ -23,10 +23,31 @@ public final class TradeJournal {
         }
         String itemPending = session.book().saved().pendingItem(item);
         if (itemPending != null) return new Result(false, "settlement_pending", itemPending);
+        if (count <= 0) return new Result(false, "invalid_count", "");
+        long available = session.book().saved().stock(item);
+        if (buying && available < count) return new Result(false, "stock_insufficient", "");
+        if (!buying && available > Long.MAX_VALUE - count) return new Result(false, "stock_overflow", "");
         String ref = "shop_" + UUID.randomUUID();
         session.book().saved().beginTrade(ref, player, item, count, buying, pay.key(), amount, before, after);
         try { session.persist(); }
         catch (RuntimeException uncertain) { return new Result(false, "settlement_pending", ref); }
+        return resume(session, purse, player, ref);
+    }
+
+    public static Result beginBulkSale(ShopSession session, ItemPurse purse, UUID player, String item, int count,
+                                       BigDecimal amount, BigDecimal before, BigDecimal after, JsonObject boxPlan) {
+        if (!session.bank().supportsReferencedSettlement() || !purse.durableDelivery())
+            return new Result(false, "bank_hook_missing", "");
+        var saved = session.book().saved();
+        String pending = saved.pendingTrade(player);
+        if (pending == null) pending = saved.pendingItem(item);
+        if (pending != null) return pending(pending);
+        if (count < 1 || count > TradeDesk.BULK_MAX_COUNT || saved.stock(item) > Long.MAX_VALUE - count)
+            return new Result(false, "stock_overflow", "");
+        String ref = "shop_" + UUID.randomUUID();
+        saved.beginBulkSale(ref, player, item, count, amount, before, after, boxPlan);
+        try { session.persist(); }
+        catch (RuntimeException uncertain) { return pending(ref); }
         return resume(session, purse, player, ref);
     }
 
@@ -37,6 +58,9 @@ public final class TradeJournal {
         if (pending != null) return new Result(false, "settlement_pending", pending);
         pending = session.book().saved().pendingItem(plan.itemId());
         if (pending != null) return new Result(false, "settlement_pending", pending);
+        if (plan.count() <= 0) return new Result(false, "invalid_count", "");
+        if (session.book().saved().stock(plan.itemId()) > Long.MAX_VALUE - plan.count())
+            return new Result(false, "stock_overflow", "");
         String ref = "shop_" + UUID.randomUUID();
         session.book().saved().beginIssuerPayout(ref, player, plan);
         try { session.persist(); }
@@ -55,6 +79,13 @@ public final class TradeJournal {
         String item = row.get("item").getAsString();
         int count = row.get("count").getAsInt();
         boolean buying = row.get("buying").getAsBoolean();
+        if (row.has("kind") && "shulker_bulk_sale".equals(row.get("kind").getAsString())) {
+            if (buying) return pending(ref);
+            try {
+                purse = purse.forBulk(row.getAsJsonObject("boxPlan"));
+                if (purse == null) return pending(ref);
+            } catch (RuntimeException invalidPlan) { return pending(ref); }
+        }
         PrivatePayoutPlan payout = row.has("kind") && "issuer_offer_payout".equals(row.get("kind").getAsString())
                 ? PrivatePayoutPlan.fromJson(row.getAsJsonObject("payoutPlan")) : null;
         String currency = row.get("currency").getAsString();
@@ -64,6 +95,7 @@ public final class TradeJournal {
         String deliveryRef = ref + (buying ? "_give" : "_take");
         String undoRef = ref + "_undo";
         try {
+            saved.verifyTradeStock(ref);
             String bankState = session.bank().receiptStatus(ref);
             String delivery = purse.receiptStatus(deliveryRef);
             if ((!"none".equals(bankState) && !"applied".equals(bankState) && !"rolled_back".equals(bankState))
@@ -122,16 +154,22 @@ public final class TradeJournal {
             }
             BigDecimal before = row.get("priceBefore").getAsBigDecimal();
             BigDecimal after = row.get("priceAfter").getAsBigDecimal();
-            BigDecimal current = session.book().lookup(session.config(), item).diamondEach();
-            if (current == null || (current.compareTo(before) != 0 && current.compareTo(after) != 0)) return pending(ref);
+            boolean stockAware = row.has("stockBefore");
+            if (!stockAware) {
+                BigDecimal current = session.book().lookup(session.config(), item).diamondEach();
+                if (current == null || (current.compareTo(before) != 0 && current.compareTo(after) != 0)) return pending(ref);
+            }
+            saved.verifyTradeStock(ref);
             state(session, ref, "completing");
             // Goods are durably proved above. Release bank locks idempotently before
             // finalizing the shop journal; a failed acknowledgement must never redeliver.
             if (!session.bank().completePayment(ref).success()) return pending(ref);
-            session.book().commit(item, after);
+            saved.applyTradeStock(ref);
+            if (!stockAware) session.book().commit(item, after);
             saved.tradeState(ref, "completed");
             try { session.persist(); }
             catch (RuntimeException uncertain) { saved.tradeState(ref, "completing"); return pending(ref); }
+            saved.compactFinalBulkPlan(ref);
             purse.forgetReceipt(deliveryRef); purse.forgetReceipt(undoRef);
             return new Result(true, "ok", ref);
         } catch (RuntimeException uncertain) { return pending(ref); }
@@ -144,6 +182,7 @@ public final class TradeJournal {
         session.book().saved().tradeState(ref, "cancelled");
         try { session.persist(); }
         catch (RuntimeException uncertain) { session.book().saved().tradeState(ref, "cancel_pending"); return pending(ref); }
+        session.book().saved().compactFinalBulkPlan(ref);
         purse.forgetReceipt(delivery); purse.forgetReceipt(undo);
         return new Result(false, code, ref);
     }

@@ -111,6 +111,15 @@ public final class PlayerPurse implements ItemPurse {
         return memoryReceipt || hostReceipt ? "unknown" : "none";
     }
 
+    @Override public ItemPurse forBulk(com.google.gson.JsonObject plan) {
+        return new BulkShulkerPurse(player, BulkShulkerPurse.Plan.fromJson(plan));
+    }
+
+    /** Shares the same persisted markers with any journal-backed specialized purse. */
+    boolean addReceipt(String reference) {
+        return player.getCommandTags().size() < 1024 && player.addCommandTag(RECEIPT_PREFIX + reference);
+    }
+
     @Override public void forgetReceipt(String reference) {
         player.removeScoreboardTag(RECEIPT_PREFIX + reference);
     }

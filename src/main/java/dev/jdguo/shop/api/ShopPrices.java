@@ -31,7 +31,8 @@ public final class ShopPrices {
         var rate = ShopRuntime.bank.unitsPerDiamond(PayChoice.note());
         if (entry == null || rate == null) return null;
         var price = ShopRuntime.state.book().lookup(ShopRuntime.config, itemId).diamondEach();
-        return price == null ? null : price.multiply(rate);
+        return price == null ? null : dev.jdguo.shop.price.StockPricing.midpoint(price, TradeDesk.targetStock(entry),
+                ShopRuntime.state.book().saved().stock(itemId), ShopRuntime.config, ShopRuntime.state.book().saved().recentFlow(itemId)).multiply(rate);
     }
 
     public static BigDecimal quoteEach(String itemId, String currency, boolean playerBuys) {

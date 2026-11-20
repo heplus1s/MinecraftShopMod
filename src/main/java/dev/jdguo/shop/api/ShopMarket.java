@@ -38,6 +38,9 @@ public final class ShopMarket {
         out.addProperty("total", quote.charge() == null ? "" : quote.charge().toPlainString());
         out.addProperty("itemId", item); out.addProperty("count", count); out.addProperty("buying", buying);
         out.addProperty("maxCount", ShopRuntime.config.maxCount());
+        out.addProperty("stock", ShopRuntime.state.book().saved().stock(item));
+        var entry = ShopRuntime.config.entry(item);
+        if (entry != null) out.addProperty("targetStock", dev.jdguo.shop.trade.TradeDesk.targetStock(entry));
         return out.toString();
     }
     /** Exact-total confirmation, never multiply displayed one-item indicative price. */
@@ -53,6 +56,14 @@ public final class ShopMarket {
         current.addProperty("ok", result.success()); current.addProperty("message", result.message());
         return current.toString();
     }
+    public static String quoteBulk(UUID id, String item) {
+        return dev.jdguo.shop.inventory.BulkShulkerOrders.quote(player(id), item).toString();
+    }
+
+    public static String executeBulk(UUID id, String item, String confirmation) {
+        return dev.jdguo.shop.inventory.BulkShulkerOrders.execute(player(id), item, confirmation).toString();
+    }
+
     /** Journal is the source of truth. No second trade insertion, feedback loop, or replay duplicates. */
     public static String recentTrades() {
         if (ShopRuntime.server == null || !ShopRuntime.server.isOnThread() || ShopRuntime.state == null) return "[]";

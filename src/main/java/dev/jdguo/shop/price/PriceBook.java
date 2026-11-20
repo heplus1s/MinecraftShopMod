@@ -8,10 +8,8 @@ import dev.jdguo.shop.price.MoneyScale;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/**
- * Live diamond-equivalent prices. A saved price always beats the config anchor.
- * Items that have never traded keep using the anchor, so an anchor edit still
- * applies to them. Reset is the only way to drop a saved price.
+/** Baseline prices. Existing legacy world prices are retained until reset; new trades
+ * do not overwrite the baseline. Inventory and Market context are applied at quotation.
  */
 public final class PriceBook {
     private final ShopSaved saved;

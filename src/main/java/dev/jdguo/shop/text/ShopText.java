@@ -17,9 +17,11 @@ public final class ShopText {
         return """
                 /shop buy <item> <count>
                 /shop sell <item> <count>
+                /shop bulk sell <item>
                 /shop confirm <quoteId>
                 /shop cancel
                 /shop price <item>
+                /shop stock <item>
                 /shop list [page]
                 /shop currency
                 /shop currency note
@@ -31,6 +33,7 @@ public final class ShopText {
                 /shop admin anchor <item> <diamonds>
                 /shop admin maxcount <1–2304>
                 /shop admin trading <item> <true|false>
+                /shop admin stock <item> <units|initial> <reason>
                 /shop admin reset <item>
                 向服务器购买、向服务器出售、查询价格，或翻阅目录。结算货币用 currency 选择。调整配置需要管理员。""";
     }
@@ -44,6 +47,7 @@ public final class ShopText {
                 /shop admin anchor <item> <diamonds>
                 /shop admin maxcount <1–2304>
                 /shop admin trading <item> <true|false>
+                /shop admin stock <item> <units|initial> <reason>
                 /shop admin reset <item>
                 查看商店和中央银行的连接，或调整价差、步长与起点。已有的成交价不会被整表清除。""";
     }
@@ -223,8 +227,8 @@ public final class ShopText {
     }
 
     public static String stepSet(BigDecimal step) {
-        return "价格步长已改为 " + MoneyScale.display(step)
-                + "。每成交一个物品，价格按当前价格移动这一小步。购买向上，出售向下，不会被拉回起点。已写入配置。";
+        return "库存调价灵敏度已改为 " + MoneyScale.display(step)
+                + "。库存低于目标时价格上浮，库存过剩时下调。已保存配置。";
     }
 
     public static String anchorSet(String name, BigDecimal anchor, String itemId) {

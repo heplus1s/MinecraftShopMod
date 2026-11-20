@@ -4,7 +4,8 @@ import java.lang.reflect.Method;
 import java.math.BigDecimal;
 
 public final class MarketInfluence {
-    private static final Method REFERENCE = marketReference();
+    private static final Method REFERENCE = marketMethod("recentUnitPrice");
+    private static final Method DEMAND = marketMethod("recentDemandUnits");
 
     private MarketInfluence() {
     }
@@ -14,18 +15,31 @@ public final class MarketInfluence {
     }
 
     public static BigDecimal adjusted(String itemId, BigDecimal base, BigDecimal notesPerDiamond, BigDecimal spread) {
-        if (REFERENCE == null || base == null || notesPerDiamond == null || notesPerDiamond.signum() <= 0) {
-            return base;
-        }
+        BigDecimal market = marketInDiamonds(itemId, notesPerDiamond);
+        return base == null || market == null ? base : blend(base, market, spread);
+    }
+
+    /** One independently priced fill snapshot for an entire order, not one per unit. */
+    public static BigDecimal marketInDiamonds(String itemId, BigDecimal notesPerDiamond) {
+        if (REFERENCE == null || notesPerDiamond == null || notesPerDiamond.signum() <= 0) return null;
         try {
             BigDecimal notes = (BigDecimal) REFERENCE.invoke(null, itemId, "note");
-            if (notes != null && notes.signum() > 0) {
-                return blend(base, notes.divide(notesPerDiamond, PriceMath.MC), spread);
-            }
+            if (notes != null && notes.signum() > 0) return notes.divide(notesPerDiamond, PriceMath.MC);
         } catch (ReflectiveOperationException ignored) {
-            return base;
+            return null;
         }
-        return base;
+        return null;
+    }
+
+    /** Confirmed independent market volume, not net buying pressure. Older Market jars return zero. */
+    public static long recentDemandUnits(String itemId) {
+        if (DEMAND == null) return 0;
+        try {
+            Object value = DEMAND.invoke(null, itemId, "note");
+            return value instanceof Long volume ? Math.max(0L, volume) : 0L;
+        } catch (ReflectiveOperationException ignored) {
+            return 0;
+        }
     }
 
     public static BigDecimal tradeQuote(String itemId, BigDecimal base, BigDecimal notesPerDiamond, boolean playerBuys) {
@@ -56,10 +70,10 @@ public final class MarketInfluence {
         return base.add(movement.max(limit.negate()).min(limit));
     }
 
-    private static Method marketReference() {
+    private static Method marketMethod(String method) {
         try {
             return Class.forName("dev.jdguo.market.api.MarketItemPrices")
-                    .getMethod("recentUnitPrice", String.class, String.class);
+                    .getMethod(method, String.class, String.class);
         } catch (ClassNotFoundException | NoSuchMethodException ignored) {
             return null;
         }

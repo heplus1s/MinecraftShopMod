@@ -9,7 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
-/** {@code config/shopmod.json}. An existing file is never rewritten on startup. */
+/** {@code config/shopmod.json}. Only explicit/versioned catalog upgrades rewrite an existing file, after backup. */
 public final class ConfigStore {
     private ConfigStore() {}
 
@@ -26,21 +26,7 @@ public final class ConfigStore {
                 ShopRuntime.config = ShopConfig.defaults();
                 return;
             }
-            String original = Files.readString(path);
-            ShopRuntime.config = ConfigJson.parse(original);
-            var json = com.google.gson.JsonParser.parseString(original).getAsJsonObject();
-            if (!json.has("catalogVersion") || json.get("catalogVersion").getAsInt() < 3) {
-                try {
-                // Preserve unknown configuration fields and custom prices; back up before migration.
-                if (Files.notExists(path.resolveSibling("shopmod.pre-catalog-v3.json")))
-                    Files.copy(path, path.resolveSibling("shopmod.pre-catalog-v3.json"));
-                var upgraded = com.google.gson.JsonParser.parseString(ConfigJson.write(ShopRuntime.config)).getAsJsonObject();
-                json.add("catalog", upgraded.get("catalog")); json.addProperty("catalogVersion", 3);
-                atomicWrite(path, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json));
-                } catch (IOException migrationFailure) {
-                    ShopRuntime.LOGGER.warn("商店目录已在内存升级，配置备份/保存失败；保留原配置和自定义价格。", migrationFailure);
-                }
-            }
+            ShopRuntime.config = readAndUpgrade(path);
         } catch (Exception error) {
             ShopRuntime.LOGGER.error("config/shopmod.json 读不了，改用内置默认。原文件没有被覆盖。", error);
             ShopRuntime.config = ShopConfig.defaults();
@@ -48,7 +34,40 @@ public final class ConfigStore {
     }
 
     public static ShopConfig read() throws IOException {
-        return ConfigJson.parse(Files.readString(path()));
+        return readAndUpgrade(path());
+    }
+
+    /** Used by startup and explicit /shop admin reload; never touches world price/stock state. */
+    static ShopConfig readAndUpgrade(Path path) throws IOException {
+        String original = Files.readString(path);
+        ShopConfig config = ConfigJson.parse(original);
+        var json = com.google.gson.JsonParser.parseString(original).getAsJsonObject();
+        boolean catalogUpgrade = !json.has("catalogVersion") || json.get("catalogVersion").getAsInt() < 3;
+        int oldPricing = json.has("pricingVersion") ? json.get("pricingVersion").getAsInt() : 0;
+        boolean pricingUpgrade = config.pricingVersion() > oldPricing;
+        if (catalogUpgrade || pricingUpgrade) {
+            try {
+            // Backup failure aborts reload rather than applying an unrecorded repricing.
+            String backupName = pricingUpgrade ? "shopmod.pre-pricing-v" + CatalogPricing.VERSION + ".json" : "shopmod.pre-catalog-v3.json";
+            Path backup = path.resolveSibling(backupName);
+            if (Files.exists(backup) && !Files.readString(backup).equals(original))
+                backup = Files.createTempFile(path.getParent(), "shopmod.pre-upgrade-", ".json");
+            if (Files.notExists(backup) || Files.size(backup) == 0) Files.writeString(backup, original);
+            var upgraded = com.google.gson.JsonParser.parseString(ConfigJson.write(config)).getAsJsonObject();
+            json.add("catalog", upgraded.get("catalog"));
+            json.addProperty("catalogVersion", 3);
+            json.addProperty("pricingVersion", config.pricingVersion());
+            if (pricingUpgrade) json.addProperty("refreshDefaultAnchors", false);
+            atomicWrite(path, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json));
+            } catch (IOException failure) {
+                // No silent fallback to new anchors if the repricing backup cannot be written.
+                ShopRuntime.LOGGER.warn("目录升级未保存，保留现有价格；请检查备份目录权限后重试。", failure);
+                var untouched = com.google.gson.JsonParser.parseString(original).getAsJsonObject();
+                untouched.addProperty("refreshDefaultAnchors", false);
+                return ConfigJson.parse(untouched.toString());
+            }
+        }
+        return config;
     }
 
     public static void write(ShopConfig config) throws IOException {

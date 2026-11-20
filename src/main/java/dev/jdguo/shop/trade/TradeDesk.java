@@ -9,6 +9,7 @@ import dev.jdguo.shop.price.PriceBook;
 import dev.jdguo.shop.price.PriceMath;
 import dev.jdguo.shop.price.MarketInfluence;
 import dev.jdguo.shop.price.PricePath;
+import dev.jdguo.shop.price.StockPricing;
 import dev.jdguo.shop.text.ShopText;
 import dev.jdguo.shop.ui.ShopListingView;
 import dev.jdguo.shop.ui.ShopQuoteView;
@@ -22,13 +23,49 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Server shop desk. Buying raises the diamond-equivalent price; selling lowers it.
+ * Server shop desk. Stock drives price pressure; independent market sales can inform the quote.
  * One order uses one selected currency, at four decimal places, or it does not trade.
  */
 public final class TradeDesk {
     private static final Logger LOGGER = LoggerFactory.getLogger("shopmod");
 
+    /** Bulk transport is an independent ceiling, not a bypass of ordinary maxCount. */
+    public static final int BULK_MAX_BOXES = 4;
+    public static final int BULK_MAX_COUNT = BULK_MAX_BOXES * 27 * 64;
+
     private TradeDesk() {}
+
+    public static ShopQuoteView quoteBulkSale(ShopSession session, String item, int count) {
+        var prepared = prepare(session, item, count, false, PayChoice.note(session.bank().currencyName()), false, BULK_MAX_COUNT);
+        if (prepared.early != null) return prepared.early;
+        if (prepared.charge != null && prepared.charge.signum() <= 0) {
+            return stop(prepared, "zero_charge", ShopText.zeroCharge(), false).early;
+        }
+        return view(prepared);
+    }
+
+    /** Execute a pre-confirmed exact quote through the common operating account and stock journal. */
+    public static ShopTradeResult sellBulk(ShopSession session, ItemPurse purse, UUID player,
+                                            String item, int count, BigDecimal confirmed, com.google.gson.JsonObject plan) {
+        if (session.book() != null && session.book().saved().pendingTrade(player) != null)
+            return ShopTradeResult.fail("settlement_pending", "上一笔交易尚待核对，请勿重复提交。");
+        var prepared = prepare(session, item, count, false, PayChoice.note(session.bank().currencyName()), true, BULK_MAX_COUNT);
+        if (prepared.tradeFailure != null) return prepared.tradeFailure;
+        if (confirmed == null || confirmed.compareTo(prepared.charge) != 0)
+            return fail(prepared, "bulk_quote_changed", "报价已变化，请重新预览。未收货。");
+        var balance = session.bank().operatingBalance(prepared.pay);
+        if (balance == null || balance.compareTo(prepared.charge) < 0)
+            return fail(prepared, "insufficient_shop", "商店经营账户余额不足，未收货。");
+        if (purse.plainCount(item) != count)
+            return fail(prepared, "bulk_boxes_changed", "待交割潜影盒已变化。请重新预览。");
+        var result = TradeJournal.beginBulkSale(session, purse, player, item, count, prepared.charge,
+                prepared.basePrice, prepared.path.end(), plan);
+        String message = result.success()
+                ? "大宗交割完成：收到 " + prepared.charge.toPlainString() + " " + prepared.currency + "。空盒留在原槽位。"
+                : "大宗交割未确认：" + result.code() + (result.reference().isEmpty() ? "" : "；订单：" + result.reference());
+        return new ShopTradeResult(result.success(), result.code(), message, item, prepared.entry.name(), count,
+                prepared.lookup.diamondEach(), prepared.path.total(), result.success() ? prepared.path.end() : null, prepared.charge);
+    }
 
     public static ShopQuoteView quote(ShopSession session, String itemId, int count, boolean buying, PayChoice pay) {
         Prepared prepared = prepare(session, itemId, count, buying, pay, false);
@@ -141,12 +178,21 @@ public final class TradeDesk {
                     ? new PriceBook.Lookup(entry, MoneyScale.positive(entry.anchorDiamonds())
                     ? MoneyScale.quantize(entry.anchorDiamonds()) : null, false)
                     : session.book().lookup(config, entry.itemId());
+            long stock = session.book() == null ? 0 : session.book().saved().stock(entry.itemId());
+            int target = targetStock(entry);
             BigDecimal each = MoneyScale.positive(lookup.diamondEach())
-                    ? MarketInfluence.adjusted(entry.itemId(), lookup.diamondEach(), rate(session.bank(), PayChoice.note()), config.spreadFraction()) : null;
+                    ? MarketInfluence.adjusted(entry.itemId(), StockPricing.midpoint(lookup.diamondEach(), target, stock, config,
+                            session.book().saved().recentFlow(entry.itemId())),
+                            rate(session.bank(), PayChoice.note()), config.spreadFraction()) : null;
             BigDecimal notes = each == null ? null : PriceMath.charge(each, rate);
-            rows.add(new ShopListingView(entry.itemId(), entry.name(), each, entry.anchorDiamonds(), notes));
+            rows.add(new ShopListingView(entry.itemId(), entry.name(), each, entry.anchorDiamonds(), notes, stock, target));
         }
         return rows;
+    }
+
+    public static int targetStock(CatalogEntry entry) {
+        return StockPricing.target(entry.itemId(), entry.anchorDiamonds(),
+                entry.systemTradeEnabled() ? MarketInfluence.recentDemandUnits(entry.itemId()) : 0);
     }
 
     private static ShopTradeResult settle(ShopSession session, ItemPurse purse, UUID player,
@@ -195,6 +241,11 @@ public final class TradeDesk {
 
     private static Prepared prepare(ShopSession session, String itemId, int count, boolean buying,
                                      PayChoice pay, boolean forTrade) {
+        return prepare(session, itemId, count, buying, pay, forTrade, session.config().maxCount());
+    }
+
+    private static Prepared prepare(ShopSession session, String itemId, int count, boolean buying,
+                                     PayChoice pay, boolean forTrade, int countLimit) {
         Prepared prepared = new Prepared();
         prepared.itemId = itemId == null ? "" : itemId;
         prepared.count = count;
@@ -212,8 +263,8 @@ public final class TradeDesk {
         if (session.book() == null) {
             return stop(prepared, "world_not_ready", ShopText.worldNotReady(), forTrade);
         }
-        if (count < 1 || count > config.maxCount()) {
-            return stop(prepared, "bad_count", ShopText.badCount(config.maxCount()), forTrade);
+        if (count < 1 || count > countLimit) {
+            return stop(prepared, "bad_count", ShopText.badCount(countLimit), forTrade);
         }
         CatalogEntry entry = config.entry(prepared.itemId);
         if (entry == null) {
@@ -233,11 +284,21 @@ public final class TradeDesk {
         if (forTrade && gate != null) {
             return stop(prepared, gate, gateMessage(gate), true);
         }
-        BigDecimal rate = rate(bank, prepared.pay);
-        BigDecimal referenceRate = rate(bank, PayChoice.note());
-        PriceMath.Execution execution = PriceMath.execution(prepared.basePrice,
-                config.stepFraction(), config.minDiamondPrice(), count, buying, config.spreadFraction(),
-                base -> MarketInfluence.adjusted(prepared.itemId, base, referenceRate, config.spreadFraction()), rate);
+        long stock = session.book().saved().stock(prepared.itemId);
+        if (buying && stock < count) {
+            return stop(prepared, "insufficient_stock", stock == 0 ? "商店缺货，暂不出售，不会扣款。"
+                    : "商店库存不足：现有 " + stock + " 件，需要 " + count + " 件。不会扣款或部分成交。", forTrade);
+        }
+        if (!buying && stock > Long.MAX_VALUE - count) {
+            return stop(prepared, "stock_limit", "商店库存计数已达上限，暂不收购。", forTrade);
+        }
+        if (session.book().saved().pendingItem(prepared.itemId) != null) {
+            return stop(prepared, "settlement_pending", "该商品上一笔订单尚待核对，暂不能交易。", forTrade);
+        }
+        BigDecimal paymentRate = rate(bank, prepared.pay);
+        BigDecimal market = MarketInfluence.marketInDiamonds(prepared.itemId, rate(bank, PayChoice.note()));
+        PriceMath.Execution execution = StockPricing.execution(prepared.basePrice, targetStock(entry), stock,
+                count, buying, config, market, paymentRate, session.book().saved().recentFlow(prepared.itemId));
         prepared.path = execution.path();
         prepared.lookup = new PriceBook.Lookup(entry, execution.first(), lookup.corrupt());
         prepared.charge = execution.charge();

@@ -34,16 +34,17 @@ public final class ShopWorldState extends PersistentState {
     public static ShopWorldState get(MinecraftServer server) {
         return server.getOverworld().getPersistentStateManager().getOrCreate(
                 ShopWorldState::fromNbt,
-                () -> new ShopWorldState(newestSaved(ShopSaved.empty())), ID);
+                () -> recoverOrInitialize(server), ID);
     }
 
     public static ShopWorldState fromNbt(NbtCompound nbt) {
-        String json = nbt.contains("json") ? nbt.getString("json") : "";
-        if (!json.isBlank()) {
+        boolean hasDocument = nbt.contains("json") || nbt.contains("jsonEncoding") || nbt.contains("jsonChunks")
+                || nbt.contains("jsonLength") || nbt.contains("jsonSha256");
+        if (hasDocument) {
             try {
-                return new ShopWorldState(newestSaved(ShopSaved.parse(json)));
+                return new ShopWorldState(newestSaved(ShopSaved.parse(ShopNbtCodec.read(nbt))));
             } catch (RuntimeException error) {
-                ShopRuntime.LOGGER.error("商店价格存档读不了，改读旁边的 JSON", error);
+                ShopRuntime.LOGGER.error("商店存档读不了，改读旁边的 JSON", error);
             }
         }
         Path backup = backupPath(ShopRuntime.server);
@@ -54,15 +55,29 @@ public final class ShopWorldState extends PersistentState {
                 throw new IllegalStateException("商店价格存档和旁边的 JSON 都无法读取: " + backup, error);
             }
         }
-        if (!json.isBlank()) {
-            throw new IllegalStateException("商店价格存档无法读取，且没有旁边的 JSON");
+        throw new IllegalStateException("商店世界存档没有可用的记录，且没有可读的 JSON 副本。");
+    }
+
+    private static ShopWorldState recoverOrInitialize(MinecraftServer server) {
+        Path backup = backupPath(server);
+        if (!Files.notExists(backup)) {
+            try {
+                return new ShopWorldState(ShopSaved.parse(Files.readString(backup)));
+            } catch (IOException | RuntimeException error) {
+                throw new IllegalStateException("商店存档无法恢复：" + backup, error);
+            }
         }
+        // Vanilla PersistentStateManager can call the factory after a read error.
+        // Do not mistake an unreadable existing ledger for a new world.
+        Path expectedNbt = backup.resolveSibling(ID + ".dat");
+        if (!Files.notExists(expectedNbt))
+            throw new IllegalStateException("已有商店存档无法读取且没有备份，禁止初始化空库存：" + expectedNbt);
         return new ShopWorldState(ShopSaved.empty());
     }
 
     private static ShopSaved newestSaved(ShopSaved nbt) {
         Path path = backupPath(ShopRuntime.server);
-        if (path == null || !Files.exists(path)) return nbt;
+        if (path == null || Files.notExists(path)) return nbt;
         try {
             ShopSaved json = ShopSaved.parse(Files.readString(path));
             return json.journalRevision() >= nbt.journalRevision() ? json : nbt;
@@ -73,10 +88,34 @@ public final class ShopWorldState extends PersistentState {
 
     @Override
     public NbtCompound writeNbt(NbtCompound nbt) {
-        nbt.putString("json", book.saved().toJson());
+        ShopNbtCodec.write(nbt, book.saved().toJson());
         nbt.putInt("version", ShopSaved.VERSION);
         writeBackup();
         return nbt;
+    }
+
+    /**
+     * Audited absolute provisioning, not item generation through normal trade.
+     * Requires caller authorization and server thread. Null actor means console.
+     * Invalid input throws IllegalArgumentException; a pending different operation throws IllegalStateException.
+     * Persistence failures also throw: outcome may have reached disk. Repeat the exact request to resume;
+     * do not compensate by incrementing stock or submitting a different target.
+     */
+    public String setStock(String item, long target, java.util.UUID actor, String reason) {
+        if (ShopRuntime.server == null || !ShopRuntime.server.isOnThread())
+            throw new IllegalStateException("Stock adjustment requires server thread");
+        String reference = book.saved().beginStockAdjustment(item, target, actor, reason);
+        markDirty();
+        writeBackup(); // Persist intent before making stock available.
+        book.saved().applyStockAdjustment(reference);
+        markDirty();
+        try { writeBackup(); }
+        catch (RuntimeException uncertain) {
+            book.saved().stockAdjustmentPending(reference);
+            markDirty();
+            throw uncertain;
+        }
+        return reference;
     }
 
     public void writeBackup() {

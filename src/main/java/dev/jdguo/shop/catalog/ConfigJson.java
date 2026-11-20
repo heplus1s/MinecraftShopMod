@@ -15,6 +15,7 @@ public final class ConfigJson {
 
     public static String write(ShopConfig config) {
         JsonObject root = new JsonObject();
+        root.addProperty("pricingVersion", config.pricingVersion());
         root.addProperty("stepFraction", plain(config.stepFraction()));
         root.addProperty("spreadFraction", plain(config.spreadFraction()));
         root.addProperty("minDiamondPrice", plain(config.minDiamondPrice()));
@@ -65,7 +66,15 @@ public final class ConfigJson {
             for (CatalogEntry entry : ShopConfig.catalogV3Additions())
                 if (catalog.stream().noneMatch(old -> old.itemId().equals(entry.itemId()))) catalog.add(entry);
         }
-        ShopConfig config = new ShopConfig(step, floor, maxCount, pageSize, catalog, spread);
+        int pricingVersion = root.has("pricingVersion") ? root.get("pricingVersion").getAsInt() : 0;
+        if (pricingVersion < 0 || pricingVersion > CatalogPricing.VERSION)
+            throw new IllegalArgumentException("Unsupported pricingVersion: " + pricingVersion);
+        if (pricingVersion < CatalogPricing.VERSION && root.has("refreshDefaultAnchors")
+                && root.get("refreshDefaultAnchors").getAsBoolean()) {
+            catalog = CatalogPricing.refreshLegacyDefaults(catalog, pricingVersion);
+            pricingVersion = CatalogPricing.VERSION;
+        }
+        ShopConfig config = new ShopConfig(step, floor, maxCount, pageSize, catalog, spread, pricingVersion);
         config.validate();
         return config;
     }
@@ -88,6 +97,7 @@ public final class ConfigJson {
     private static String pretty(JsonObject root) {
         StringBuilder out = new StringBuilder();
         out.append("{\n  \"catalogVersion\": 3,\n");
+        out.append("  \"pricingVersion\": ").append(root.get("pricingVersion").getAsInt()).append(",\n");
         out.append("  \"stepFraction\": \"").append(root.get("stepFraction").getAsString()).append("\",\n");
         out.append("  \"spreadFraction\": \"").append(root.get("spreadFraction").getAsString()).append("\",\n");
         out.append("  \"minDiamondPrice\": \"").append(root.get("minDiamondPrice").getAsString()).append("\",\n");

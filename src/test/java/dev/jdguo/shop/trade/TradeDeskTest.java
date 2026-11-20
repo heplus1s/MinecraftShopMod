@@ -4,7 +4,8 @@ import dev.jdguo.shop.bank.PayChoice;
 import dev.jdguo.shop.bank.ShopBank;
 import dev.jdguo.shop.catalog.ShopConfig;
 import dev.jdguo.shop.price.PriceBook;
-import dev.jdguo.shop.price.PriceMath;
+import dev.jdguo.shop.price.StockPricing;
+import static dev.jdguo.shop.support.StockFixture.stocked;
 import dev.jdguo.shop.price.ShopSaved;
 import dev.jdguo.shop.support.MapPurse;
 import dev.jdguo.shop.support.MemoryBank;
@@ -30,7 +31,7 @@ class TradeDeskTest {
     @Test
     void buyingMovesTheSelectedCurrencyAtFourDecimals() {
         MemoryBank bank = new MemoryBank();
-        PriceBook book = new PriceBook(ShopSaved.empty());
+        PriceBook book = stocked(DIAMOND, IRON);
         AtomicInteger saves = new AtomicInteger();
         ShopSession session = new ShopSession(ShopConfig.defaults(), book, bank, saves::incrementAndGet);
         MapPurse purse = new MapPurse();
@@ -43,7 +44,8 @@ class TradeDeskTest {
         assertEquals(0, bank.shop("note").compareTo(new BigDecimal("1.0200")));
         assertEquals(1, purse.plainCount(DIAMOND));
         assertTrue(saves.get() >= 2, "intent and completion must both persist");
-        assertTrue(book.lookup(session.config(), DIAMOND).diamondEach().compareTo(BigDecimal.ONE) > 0);
+        assertEquals(127, book.saved().stock(DIAMOND));
+        assertTrue(result.diamondEachAfter().compareTo(BigDecimal.ONE) > 0);
         assertFalse(result.message().contains("钻石等值"));
         assertTrue(result.message().contains("成交后参考单价"));
         assertTrue(result.message().contains("央行券"));
@@ -53,33 +55,36 @@ class TradeDeskTest {
     @Test
     void anOrderBelowOneNoteIsAccepted() {
         MemoryBank bank = new MemoryBank();
-        ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
+        ShopSession session = new ShopSession(ShopConfig.defaults(), stocked(DIAMOND, IRON), bank, () -> { });
         ShopTradeResult result = TradeDesk.buy(session, new MapPurse(), PLAYER, PayChoice.note(), IRON, 1);
         assertTrue(result.success(), result.message());
-        assertEquals(0, result.charge().compareTo(new BigDecimal("0.0612")));
+        assertEquals(4, result.charge().scale());
+        assertTrue(result.charge().signum() > 0);
         assertTrue(result.charge().compareTo(BigDecimal.ONE) < 0);
-        assertEquals(0, bank.player("note").compareTo(new BigDecimal("99.9388")));
-        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("0.0612")));
+        assertEquals(0, bank.player("note").compareTo(new BigDecimal("100").subtract(result.charge())));
+        assertEquals(0, bank.shop("note").compareTo(result.charge()));
     }
 
     @Test
     void aShortBalanceRefusesTheWholeOrder() {
         MemoryBank bank = new MemoryBank();
-        bank.player.put("note", new BigDecimal("0.0500"));
-        ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
+        bank.player.put("note", new BigDecimal("0.0050"));
+        ShopSession session = new ShopSession(ShopConfig.defaults(), stocked(DIAMOND, IRON), bank, () -> { });
         MapPurse purse = new MapPurse();
         ShopTradeResult result = TradeDesk.buy(session, purse, PLAYER, PayChoice.note(), IRON, 1);
         assertEquals("insufficient_funds", result.code());
         assertEquals(0, purse.plainCount(IRON));
-        assertEquals(0, bank.player("note").compareTo(new BigDecimal("0.0500")));
+        assertEquals(0, bank.player("note").compareTo(new BigDecimal("0.0050")));
         assertEquals(0, bank.shop("note").compareTo(BigDecimal.ZERO));
         assertTrue(result.message().contains("没有少买一部分"));
 
-        bank.player.put("note", new BigDecimal("1.0000"));
+        BigDecimal balance = TradeDesk.quote(session, IRON, 64, true, PayChoice.note()).charge()
+                .subtract(new BigDecimal("0.0001"));
+        bank.player.put("note", balance);
         ShopTradeResult stack = TradeDesk.buy(session, purse, PLAYER, PayChoice.note(), IRON, 64);
         assertEquals("insufficient_funds", stack.code());
         assertEquals(0, purse.plainCount(IRON));
-        assertEquals(0, bank.player("note").compareTo(new BigDecimal("1.0000")));
+        assertEquals(0, bank.player("note").compareTo(balance));
     }
 
     @Test
@@ -91,7 +96,7 @@ class TradeDeskTest {
         bank.shop.put(personal.key(), BigDecimal.ZERO);
         bank.rates.put(personal.key(), new BigDecimal("2"));
         bank.notes.put(personal.key(), new ShopBank.PersonalNoteRef(noteId, "甲", true));
-        ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
+        ShopSession session = new ShopSession(ShopConfig.defaults(), stocked(DIAMOND, IRON), bank, () -> { });
 
         ShopTradeResult result = TradeDesk.buy(session, new MapPurse(), PLAYER, personal, DIAMOND, 1);
 
@@ -108,7 +113,7 @@ class TradeDeskTest {
     @Test
     void hardCurrencyIsRefused() {
         MemoryBank bank = new MemoryBank();
-        ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
+        ShopSession session = new ShopSession(ShopConfig.defaults(), stocked(DIAMOND, IRON), bank, () -> { });
         PayChoice copper = new PayChoice("copper", "铜锭", false, null);
         ShopTradeResult result = TradeDesk.buy(session, new MapPurse(), PLAYER, copper, DIAMOND, 1);
         assertEquals("hard_currency", result.code());
@@ -119,20 +124,23 @@ class TradeDeskTest {
     @Test
     void sellingPaysFromTheSameCurrencyAndLowersThePrice() {
         MemoryBank bank = new MemoryBank();
-        bank.shop.put("note", new BigDecimal("10"));
-        PriceBook book = new PriceBook(ShopSaved.empty());
+        bank.shop.put("note", new BigDecimal("20"));
+        PriceBook book = stocked(DIAMOND, IRON);
         book.commit(DIAMOND, new BigDecimal("8"));
         ShopSession session = new ShopSession(ShopConfig.defaults(), book, bank, () -> { });
         MapPurse purse = new MapPurse();
         purse.items.put(DIAMOND, 1);
 
+        var quote = TradeDesk.quote(session, DIAMOND, 1, false, PayChoice.note());
         ShopTradeResult result = TradeDesk.sell(session, purse, PLAYER, PayChoice.note(), DIAMOND, 1);
 
         assertTrue(result.success());
+        assertEquals(0, quote.charge().compareTo(result.charge()));
+        assertTrue(result.diamondEachAfter().compareTo(new BigDecimal("8")) < 0);
         assertEquals(0, purse.plainCount(DIAMOND));
-        assertEquals(0, bank.player("note").compareTo(new BigDecimal("107.8243")));
-        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("2.1757")));
-        assertEquals(0, book.lookup(session.config(), DIAMOND).diamondEach().compareTo(new BigDecimal("8").divide(new BigDecimal("1.002"), PriceMath.MC)));
+        assertEquals(0, bank.player("note").compareTo(new BigDecimal("100").add(result.charge())));
+        assertEquals(0, bank.shop("note").compareTo(new BigDecimal("20").subtract(result.charge())));
+        assertEquals(0, book.lookup(session.config(), DIAMOND).diamondEach().compareTo(new BigDecimal("8")));
     }
 
     @Test
@@ -141,7 +149,7 @@ class TradeDeskTest {
             MemoryBank bank = new MemoryBank();
             bank.loaded = loaded;
             bank.hook = false;
-            PriceBook book = new PriceBook(ShopSaved.empty());
+            PriceBook book = stocked(DIAMOND, IRON);
             ShopSession session = new ShopSession(ShopConfig.defaults(), book, bank, () -> { });
             MapPurse purse = new MapPurse();
             ShopTradeResult result = TradeDesk.buy(session, purse, PLAYER, PayChoice.note(), DIAMOND, 1);
@@ -164,7 +172,7 @@ class TradeDeskTest {
     void quotesStillShowTheDiamondPriceWhenTheBankIsAbsent() {
         MemoryBank bank = new MemoryBank();
         bank.loaded = false;
-        ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
+        ShopSession session = new ShopSession(ShopConfig.defaults(), stocked(DIAMOND, IRON), bank, () -> { });
         ShopQuoteView view = TradeDesk.quote(session, DIAMOND, 1, true, PayChoice.note());
         assertTrue(view.listed());
         assertEquals(0, view.diamondEach().compareTo(new BigDecimal("1.02")));
@@ -190,7 +198,7 @@ class TradeDeskTest {
     @Test
     void theShopCannotBuyWhatItCannotPayFor() {
         MemoryBank bank = new MemoryBank();
-        ShopSession session = new ShopSession(ShopConfig.defaults(), new PriceBook(ShopSaved.empty()), bank, () -> { });
+        ShopSession session = new ShopSession(ShopConfig.defaults(), stocked(DIAMOND, IRON), bank, () -> { });
         MapPurse purse = new MapPurse();
         purse.items.put(DIAMOND, 4);
         ShopTradeResult result = TradeDesk.sell(session, purse, PLAYER, PayChoice.note(), DIAMOND, 1);
@@ -203,7 +211,7 @@ class TradeDeskTest {
     @Test
     void aFailedGiveReturnsThePaymentAndDoesNotSaveANewPrice() {
         MemoryBank bank = new MemoryBank();
-        PriceBook book = new PriceBook(ShopSaved.empty());
+        PriceBook book = stocked(DIAMOND, IRON);
         AtomicInteger saves = new AtomicInteger();
         ShopSession session = new ShopSession(ShopConfig.defaults(), book, bank, saves::incrementAndGet);
         MapPurse purse = new MapPurse();
@@ -223,15 +231,15 @@ class TradeDeskTest {
     void manyPurchasesCanLeaveTheAnchor() {
         MemoryBank bank = new MemoryBank();
         bank.player.put("note", new BigDecimal("100000"));
-        PriceBook book = new PriceBook(ShopSaved.empty());
+        PriceBook book = stocked(DIAMOND, IRON);
         ShopSession session = new ShopSession(ShopConfig.defaults(), book, bank, () -> { });
         MapPurse purse = new MapPurse();
         ShopTradeResult result = TradeDesk.buy(session, purse, PLAYER, PayChoice.note(), DIAMOND, 64);
         assertTrue(result.success(), result.message());
-        BigDecimal end = book.lookup(session.config(), DIAMOND).diamondEach();
-        BigDecimal expected = PriceMath.buy(BigDecimal.ONE, session.config().stepFraction(),
-                session.config().minDiamondPrice(), 64).end();
-        assertEquals(0, end.compareTo(expected));
-        assertTrue(end.compareTo(new BigDecimal("1.1")) > 0);
+        int target = TradeDesk.targetStock(session.config().entry(DIAMOND));
+        assertEquals(target - 64, book.saved().stock(DIAMOND));
+        BigDecimal end = StockPricing.midpoint(BigDecimal.ONE, target, target - 64, session.config(), new BigDecimal("-64"));
+        assertEquals(0, end.compareTo(result.diamondEachAfter()));
+        assertTrue(end.compareTo(BigDecimal.ONE) > 0 && end.compareTo(new BigDecimal("1.09")) < 0);
     }
 }

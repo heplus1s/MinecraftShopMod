@@ -1,6 +1,7 @@
 package dev.jdguo.shop.commands;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
@@ -66,6 +67,14 @@ public final class ShopCommands {
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                         .then(argument("count", IntegerArgumentType.integer(1))
                                                 .executes(ctx -> trade(ctx, true)))))
+                        .then(literal("bulk")
+                                .then(literal("sell")
+                                        .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
+                                                .executes(ShopCommands::previewBulk)))
+                                .then(literal("confirm")
+                                        .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
+                                                .then(argument("token", StringArgumentType.word())
+                                                        .executes(ShopCommands::confirmBulk)))))
                         .then(literal("sell")
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                         .then(argument("count", IntegerArgumentType.integer(1))
@@ -81,6 +90,9 @@ public final class ShopCommands {
                         .then(literal("price")
                                 .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                         .executes(ctx -> price(ctx))))
+                        .then(literal("stock")
+                                .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
+                                        .executes(ShopCommands::stock)))
                         .then(literal("list")
                                 .executes(ctx -> list(ctx.getSource(), 1))
                                 .then(argument("page", IntegerArgumentType.integer(1))
@@ -113,10 +125,44 @@ public final class ShopCommands {
                                         .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                                 .then(argument("enabled", com.mojang.brigadier.arguments.BoolArgumentType.bool())
                                                         .executes(ctx -> trading(ctx, com.mojang.brigadier.arguments.BoolArgumentType.getBool(ctx,"enabled"))))))
+                                .then(literal("stock")
+                                        .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
+                                                .then(argument("units", LongArgumentType.longArg(0))
+                                                        .then(argument("reason", StringArgumentType.greedyString())
+                                                                .executes(ShopCommands::setStock)))
+                                                .then(literal("initial")
+                                                        .then(argument("reason", StringArgumentType.greedyString())
+                                                                .executes(ShopCommands::initialStock)))))
                                 .then(literal("reset")
                                         .then(argument("item", IdentifierArgumentType.identifier()).suggests(ITEMS)
                                                 .executes(ctx -> reset(ctx)))))
         ));
+    }
+
+    private static int previewBulk(CommandContext<ServerCommandSource> ctx) {
+        var source = ctx.getSource();
+        var player = player(source);
+        if (player == null) return problem(source, ShopText.notPlayer());
+        if (ShopRuntime.state == null) return problem(source, ShopText.worldNotReady());
+        var preview = dev.jdguo.shop.inventory.BulkShulkerOrders.quote(player, item(ctx));
+        if (!preview.get("ok").getAsBoolean()) return problem(source, preview.get("message").getAsString());
+        String command = "/shop bulk confirm " + item(ctx) + " " + preview.get("confirmation").getAsString();
+        var confirm = Text.literal(" [确认大宗出售]").styled(style -> style.withColor(Formatting.GREEN)
+                .withClickEvent(new net.minecraft.text.ClickEvent(net.minecraft.text.ClickEvent.Action.RUN_COMMAND, command)));
+        source.sendMessage(Text.literal("[商店] ").formatted(Formatting.GOLD).append(Text.literal(preview.get("itemName").getAsString() + " ×" + preview.get("count").getAsInt()
+                + "；实收 " + preview.get("total").getAsString() + " " + preview.get("currencyName").getAsString()
+                + "。预计退回 " + preview.get("boxes").getAsInt() + " 个空盒；45 秒内确认。").formatted(Formatting.AQUA)).append(confirm));
+        return 1;
+    }
+
+    private static int confirmBulk(CommandContext<ServerCommandSource> ctx) {
+        var source = ctx.getSource();
+        var player = player(source);
+        if (player == null) return problem(source, ShopText.notPlayer());
+        if (ShopRuntime.state == null) return problem(source, ShopText.worldNotReady());
+        var result = dev.jdguo.shop.inventory.BulkShulkerOrders.execute(player, item(ctx), StringArgumentType.getString(ctx, "token"));
+        String message = result.get("message").getAsString();
+        return result.get("ok").getAsBoolean() ? okay(source, message) : problem(source, message);
     }
 
     private static int trade(CommandContext<ServerCommandSource> ctx, boolean buying) {
@@ -313,6 +359,44 @@ public final class ShopCommands {
         }
     }
 
+    private static int stock(CommandContext<ServerCommandSource> ctx) {
+        var source = ctx.getSource();
+        if (ShopRuntime.state == null) return problem(source, ShopText.worldNotReady());
+        var entry = ShopRuntime.config.entry(item(ctx));
+        if (entry == null) return problem(source, ShopText.anchorMissing());
+        return info(source, entry.name() + "：现有库存 " + ShopRuntime.state.book().saved().stock(entry.itemId())
+                + " 件，目标库存 " + dev.jdguo.shop.trade.TradeDesk.targetStock(entry) + " 件。");
+    }
+
+    private static int setStock(CommandContext<ServerCommandSource> ctx) {
+        return setStock(ctx, false);
+    }
+
+    private static int initialStock(CommandContext<ServerCommandSource> ctx) {
+        return setStock(ctx, true);
+    }
+
+    private static int setStock(CommandContext<ServerCommandSource> ctx, boolean initial) {
+        var source = ctx.getSource();
+        if (ShopRuntime.state == null) return problem(source, ShopText.worldNotReady());
+        var entry = ShopRuntime.config.entry(item(ctx));
+        if (entry == null || !dev.jdguo.shop.inventory.PlayerPurse.knownItem(item(ctx)))
+            return problem(source, ShopText.badItem());
+        var actor = player(source);
+        try {
+            var saved = ShopRuntime.state.book().saved();
+            long units = initial ? dev.jdguo.shop.price.StockPricing.target(entry.itemId(), entry.anchorDiamonds(), 0)
+                    : LongArgumentType.getLong(ctx, "units");
+            if (initial && (!entry.systemTradeEnabled() || saved.stockRevision(entry.itemId()) != 0))
+                return problem(source, "仅可给已开放系统交易且从未入出库的商品配置基础库存。");
+            String ref = ShopRuntime.state.setStock(entry.itemId(), units, actor == null ? null : actor.getUuid(),
+                    StringArgumentType.getString(ctx, "reason"));
+            return info(source, entry.name() + "库存已设为 " + units + " 件。记录：" + ref);
+        } catch (IllegalArgumentException | IllegalStateException rejected) {
+            return problem(source, "库存调整未确认：" + rejected.getMessage());
+        }
+    }
+
     private static int reset(CommandContext<ServerCommandSource> ctx) {
         ServerCommandSource source = ctx.getSource();
         if (ShopRuntime.state == null) {
@@ -324,6 +408,8 @@ public final class ShopCommands {
             return problem(source, ShopText.anchorMissing());
         }
         PriceBook book = ShopRuntime.state.book();
+        if (book.saved().pendingItem(itemId) != null)
+            return problem(source, "该商品有待恢复订单，暂不能重置参考价。");
         book.reset(itemId);
         ShopRuntime.save();
         return info(source, ShopText.resetDone(entry.name(), entry.anchorDiamonds()));

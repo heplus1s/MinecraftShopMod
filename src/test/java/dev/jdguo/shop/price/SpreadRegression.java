@@ -77,13 +77,13 @@ public final class SpreadRegression {
                 "cross-currency constant-rate profit");
         MemoryBank bank = new MemoryBank();
         bank.player.put("note", new BigDecimal("10000"));
-        PriceBook book = new PriceBook(ShopSaved.empty());
+        PriceBook book = StockFixture.stocked("minecraft:diamond");
         ShopSession session = new ShopSession(ShopConfig.defaults(), book, bank, () -> {});
         MapPurse purse = new MapPurse(); UUID player = UUID.randomUUID();
         var buy = TradeDesk.buy(session, purse, player, PayChoice.note(), "minecraft:diamond", 64);
         yes(buy.success(), "buy integration");
         ShopSaved restored = ShopSaved.parse(book.saved().toJson());
-        equal(restored.read("minecraft:diamond").value(), book.lookup(session.config(), "minecraft:diamond").diamondEach(), "exact price reload");
+        yes(restored.stock("minecraft:diamond") == book.saved().stock("minecraft:diamond"), "exact stock reload");
         var sell = TradeDesk.sell(session, purse, player, PayChoice.note(), "minecraft:diamond", 64);
         yes(sell.success(), "sell integration");
         yes(bank.player("note").compareTo(new BigDecimal("10000")) < 0, "integration roundtrip profit");

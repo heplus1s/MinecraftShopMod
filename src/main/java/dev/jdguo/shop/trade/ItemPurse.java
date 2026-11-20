@@ -16,6 +16,9 @@ public interface ItemPurse {
     default String receiptStatus(String reference) { return "unknown"; }
     default void forgetReceipt(String reference) { }
 
+    /** Restore the exact persisted box delivery plan, never treat it as loose items. */
+    default ItemPurse forBulk(com.google.gson.JsonObject plan) { return null; }
+
     void give(String itemId, int count);
 
     void takePlain(String itemId, int count);

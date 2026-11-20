@@ -313,10 +313,10 @@ public final class ShopScreen extends Screen {
             context.drawText(textRenderer, textRenderer.trimToWidth(item.name(), cellW - 24), cellX + 20, cellY + 6, 0xFFE8E8E8, false);
             String price = ShopQuotes.due(data, item, currencyId);
             int color = ShopQuotes.UNAVAILABLE.equals(price) ? 0xFFAAAAAA : 0xFFE8D090;
-            String quantity = quantityOf(item.id());
-            String total = ShopQuotes.total(price, quantity);
+            String stock = ShopQuotes.stock(data, item.id());
             context.drawText(textRenderer, textRenderer.trimToWidth("参考单价：" + price, cellW - 4), cellX, cellY + 20, color, false);
-            context.drawText(textRenderer, textRenderer.trimToWidth("静态估算：" + total, cellW - 4), cellX, cellY + 32, color, false);
+            context.drawText(textRenderer, textRenderer.trimToWidth(stock == null ? "静态估算：" + ShopQuotes.total(price, quantityOf(item.id()))
+                    : ShopQuotes.outOfStock(data, item.id()) ? "缺货 · 暂停出售" : "库存：" + stock, cellW - 4), cellX, cellY + 32, color, false);
         }
         context.disableScissor();
     }

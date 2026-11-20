@@ -33,6 +33,11 @@ class ShopSavedTest {
     }
 
     @Test
+    void emptyCheckpointIsNotANewWorld() {
+        assertThrows(IllegalStateException.class, () -> ShopSaved.parse(" "));
+    }
+
+    @Test
     void aNewerVersionIsRefused() {
         assertThrows(IllegalStateException.class, () -> ShopSaved.parse("{\"version\":9,\"prices\":{}}"));
     }
@@ -59,6 +64,7 @@ class ShopSavedTest {
     }
     @Test void onlyCompletedShopTradesAppearOnceAndSurviveReload() {
         var saved=ShopSaved.empty();var player=java.util.UUID.randomUUID();
+        dev.jdguo.shop.support.StockFixture.seed(saved, "minecraft:diamond_sword", 1);
         saved.beginTrade("a",player,"minecraft:diamond_sword",1,true,"note",new BigDecimal("4.25"),BigDecimal.ONE,BigDecimal.TEN);
         assertEquals(0,saved.marketTrades().size());
         saved.tradeState("a","completed");

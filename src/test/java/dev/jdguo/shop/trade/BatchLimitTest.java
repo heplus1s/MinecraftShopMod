@@ -33,11 +33,11 @@ class BatchLimitTest {
    if(i==49)b=new ShopSession(config,new PriceBook(ShopSaved.parse(b.book().saved().toJson())),b2,()->{});
   }
   assertEquals(0,b1.shop("note").compareTo(b2.shop("note")));
-  BigDecimal end=a.book().lookup(config,"minecraft:cut_copper").diamondEach();
-  assertEquals(0,end.compareTo(b.book().lookup(config,"minecraft:cut_copper").diamondEach()));
-  BigDecimal ratio=end.divide(config.entry("minecraft:cut_copper").anchorDiamonds(),PriceMath.MC);
-  assertTrue(ratio.compareTo(new BigDecimal("0.82"))<0);
-  assertTrue(ratio.compareTo(new BigDecimal("0.81"))>0);
+  assertEquals(100,a.book().saved().stock("minecraft:cut_copper"));
+  assertEquals(a.book().saved().stock("minecraft:cut_copper"),b.book().saved().stock("minecraft:cut_copper"));
+  var anchor=config.entry("minecraft:cut_copper").anchorDiamonds();
+  int target=TradeDesk.targetStock(config.entry("minecraft:cut_copper"));
+  assertTrue(StockPricing.midpoint(anchor,target,100,config).compareTo(StockPricing.midpoint(anchor,target,0,config))<0);
  }
  @Test void emptyOperatingAccountDoesNotAutoFundOrTakeGoods() {
   var b=new MemoryBank();var p=new MapPurse();p.items.put("minecraft:cut_copper",1);

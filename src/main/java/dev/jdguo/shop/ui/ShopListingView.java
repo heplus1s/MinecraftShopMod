@@ -8,6 +8,8 @@ public record ShopListingView(
         String itemName,
         BigDecimal diamondEach,
         BigDecimal anchor,
-        BigDecimal notesEach
+        BigDecimal notesEach,
+        long stock,
+        int targetStock
 ) {
 }

@@ -78,6 +78,8 @@ public final class ShopUiSnapshot {
             JsonObject item = new JsonObject();
             item.addProperty("item", row.itemId());
             item.addProperty("name", row.itemName());
+            item.addProperty("stock", row.stock());
+            item.addProperty("targetStock", row.targetStock());
             item.addProperty("systemTradeEnabled", ShopRuntime.config.entry(row.itemId()).systemTradeEnabled());
             String category = dev.jdguo.shop.catalog.CatalogCategories.id(row.itemId());
             item.addProperty("categoryId", category);
